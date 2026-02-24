@@ -2,14 +2,12 @@
 
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { useRouter } from 'next/navigation'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const router = useRouter()
   const supabase = createClient()
 
   async function handleLogin(e: React.FormEvent) {
@@ -23,8 +21,8 @@ export default function LoginPage() {
       setError(error.message)
       setLoading(false)
     } else {
-      router.push('/dashboard')
-      router.refresh()
+      // Hard redirect — bypasses any router caching issues
+      window.location.href = '/dashboard'
     }
   }
 
@@ -45,9 +43,8 @@ export default function LoginPage() {
         borderRadius: '20px',
         padding: '40px',
       }}>
-        {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-          <svg width="56" height="56" viewBox="0 0 56 56" fill="none" style={{ margin: '0 auto 16px' }}>
+          <svg width="56" height="56" viewBox="0 0 56 56" fill="none" style={{ margin: '0 auto 16px', display: 'block' }}>
             <rect width="56" height="56" rx="14" fill="#00C8E0"/>
             <circle cx="11" cy="11" r="2.2" fill="#080c0f" opacity="0.5"/>
             <circle cx="19" cy="11" r="2.2" fill="#080c0f" opacity="0.5"/>
@@ -63,8 +60,8 @@ export default function LoginPage() {
             <circle cx="19" cy="45" r="2.2" fill="#080c0f" opacity="0.5"/>
             <circle cx="28" cy="45" r="2.2" fill="#080c0f" opacity="0.5"/>
             <circle cx="37" cy="45" r="2.2" fill="#080c0f" opacity="0.5"/>
-            <path d="M19 17 L28 36 L37 17" stroke="#080c0f" stroke-width="4"
-              stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            <path d="M19 17 L28 36 L37 17" stroke="#080c0f" strokeWidth="4"
+              strokeLinecap="round" strokeLinejoin="round" fill="none"/>
           </svg>
           <h1 style={{ fontFamily: 'Syne, sans-serif', fontSize: '26px', fontWeight: 800, color: '#e8f0f5', margin: 0 }}>
             Ads<span style={{ color: '#00C8E0' }}>Dash</span>
@@ -76,10 +73,11 @@ export default function LoginPage() {
 
         <form onSubmit={handleLogin}>
           <div style={{ marginBottom: '14px' }}>
-            <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#8ba0ae', marginBottom: '6px', letterSpacing: '0.3px' }}>
+            <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#8ba0ae', marginBottom: '6px' }}>
               Email
             </label>
             <input
+              id="email"
               type="email"
               value={email}
               onChange={e => setEmail(e.target.value)}
@@ -90,10 +88,11 @@ export default function LoginPage() {
           </div>
 
           <div style={{ marginBottom: '20px' }}>
-            <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#8ba0ae', marginBottom: '6px', letterSpacing: '0.3px' }}>
+            <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#8ba0ae', marginBottom: '6px' }}>
               Password
             </label>
             <input
+              id="password"
               type="password"
               value={password}
               onChange={e => setPassword(e.target.value)}
@@ -131,7 +130,6 @@ export default function LoginPage() {
               fontWeight: 700,
               fontFamily: 'Syne, sans-serif',
               cursor: loading ? 'not-allowed' : 'pointer',
-              transition: 'background 0.15s',
             }}
           >
             {loading ? 'Signing in...' : 'Sign in →'}
