@@ -21,7 +21,7 @@ export async function middleware(req: NextRequest) {
     }
   );
 
-  // This is the IMPORTANT part: it refreshes/auth sync for SSR
+  // This refreshes the session cookies for SSR pages
   await supabase.auth.getUser();
 
   return res;
