@@ -12,4 +12,5 @@ export default async function Home() {
 
   // If NOT logged in → go login
   redirect("/login");
+  export const dynamic = "force-dynamic";
 }
