@@ -29,7 +29,8 @@ export default function DashboardShell({ profile, clients, children }: Props) {
     { href: '/dashboard', label: 'Dashboard', icon: '▦' },
     ...(isAdmin ? [
       { href: '/dashboard/accounts', label: 'Ad Accounts', icon: '🔗' },
-      { href: '/dashboard/admin', label: 'Admin', icon: '⚙' },
+      { href: "/dashboard/admin", label: "Admin", icon: "⚙" },
+      { href: "/dashboard/upload", label: "Import Data", icon: "⬆" },
       { href: '/dashboard/reports', label: 'Reports', icon: '📊' },
     ] : [
       { href: '/dashboard/reports', label: 'Reports', icon: '📊' },
