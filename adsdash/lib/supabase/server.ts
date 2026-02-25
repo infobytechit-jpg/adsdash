@@ -9,7 +9,17 @@ export function createClient() {
     {
       cookies: {
         getAll() {
-          return cookieStore.getAll()
+          const allCookies = cookieStore.getAll()
+          // Map our manual cookies to what Supabase expects
+          const accessToken = cookieStore.get('sb-access-token')?.value
+          const refreshToken = cookieStore.get('sb-refresh-token')?.value
+          if (accessToken && refreshToken) {
+            return [
+              { name: `sb-${process.env.NEXT_PUBLIC_SUPABASE_URL!.split('//')[1].split('.')[0]}-auth-token`, 
+                value: JSON.stringify([accessToken, refreshToken]) }
+            ]
+          }
+          return allCookies
         },
         setAll(cookiesToSet) {
           try {
