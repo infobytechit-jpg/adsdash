@@ -18,6 +18,8 @@ export default function LoginPage() {
             if (res?.ok === false) {
               setError(res.message);
               setLoading(false);
+            } else {
+              window.location.href = "/dashboard";
             }
           }}
           style={{ display: "flex", flexDirection: "column", gap: 12 }}
