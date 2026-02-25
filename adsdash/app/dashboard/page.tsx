@@ -1,7 +1,57 @@
-export default function DashboardPage() {
-  return (
-    <div style={{ padding: '40px', color: 'white' }}>
-      <h1 style={{ color: '#00C8E0' }}>✅ Logged in!</h1>
-    </div>
-  )
-}
+import { createClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
+import DashboardClient from '@/components/DashboardClient'
+
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: { client?: string; period?: string; platform?: string }
+}) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
+
+  const { data: profile } = await supabase
+    .from('profiles').select('*').eq('id', user.id).single()
+
+  const isAdmin = profile?.role === 'admin'
+
+  let clientId: string | null = null
+  let clientData: any = null
+
+  if (isAdmin && searchParams.client) {
+    clientId = searchParams.client
+    const { data } = await supabase.from('clients').select('*').eq('id', clientId).single()
+    clientData = data
+  } else if (!isAdmin) {
+    const { data } = await supabase.from('clients').select('*').eq('user_id', user.id).single()
+    clientData = data
+    clientId = data?.id
+  } else if (isAdmin) {
+    const { data } = await supabase.from('clients').select('*').order('name').limit(1).single()
+    clientData = data
+    clientId = data?.id
+  }
+
+  const period = searchParams.period || 'week'
+  const platform = searchParams.platform || 'all'
+
+  const endDate = new Date()
+  const startDate = new Date()
+  if (period === 'today') startDate.setHours(0, 0, 0, 0)
+  else if (period === 'week') startDate.setDate(startDate.getDate() - 7)
+  else if (period === 'month') startDate.setDate(1)
+  else startDate.setFullYear(startDate.getFullYear() - 1)
+
+  const startStr = startDate.toISOString().split('T')[0]
+  const endStr = endDate.toISOString().split('T')[0]
+
+  let metrics: any[] = []
+  let campaigns: any[] = []
+
+  if (clientId) {
+    let metricsQuery = supabase
+      .from('metrics_cache')
+      .select('*')
+      .eq('client_id', clientId)
+      .gte('date', s
