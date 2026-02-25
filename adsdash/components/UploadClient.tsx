@@ -25,11 +25,9 @@ export default function UploadClient({ clients }: Props) {
   const requiredFields = ['date', 'spend', 'impressions', 'clicks', 'conversions']
   const optionalFields = ['leads', 'conversion_value', 'cpc', 'ctr', 'campaign_name']
 
-  // Auto-detect column mappings from common Google/Meta CSV headers
   function autoDetect(cols: string[]): Record<string, string> {
     const map: Record<string, string> = {}
     const lower = cols.map(c => c.toLowerCase().trim())
-
     const matchers: Record<string, string[]> = {
       date: ['day', 'date', 'data', 'week', 'month'],
       spend: ['cost', 'spend', 'amount spent', 'costo', 'importo speso', 'spesa', 'cost (eur)', 'cost (usd)', 'cost (gbp)'],
@@ -42,7 +40,6 @@ export default function UploadClient({ clients }: Props) {
       ctr: ['ctr', 'click-through rate'],
       campaign_name: ['campaign', 'campaign name', 'nome campagna', 'campagna'],
     }
-
     for (const [field, patterns] of Object.entries(matchers)) {
       for (const pattern of patterns) {
         const idx = lower.findIndex(c => c.includes(pattern))
@@ -55,8 +52,6 @@ export default function UploadClient({ clients }: Props) {
   function parseCSV(text: string): { headers: string[]; rows: Record<string, string>[] } {
     const lines = text.trim().split('\n').filter(l => l.trim())
     if (lines.length < 2) return { headers: [], rows: [] }
-
-    // Handle quoted CSVs
     function parseLine(line: string): string[] {
       const result: string[] = []
       let current = ''
@@ -69,7 +64,6 @@ export default function UploadClient({ clients }: Props) {
       result.push(current.trim())
       return result
     }
-
     const headers = parseLine(lines[0])
     const rows = lines.slice(1).map(line => {
       const vals = parseLine(line)
@@ -77,7 +71,6 @@ export default function UploadClient({ clients }: Props) {
       headers.forEach((h, i) => { row[h] = vals[i] || '' })
       return row
     }).filter(row => Object.values(row).some(v => v !== ''))
-
     return { headers, rows }
   }
 
@@ -100,30 +93,29 @@ export default function UploadClient({ clients }: Props) {
 
   function cleanNumber(val: string): number {
     if (!val) return 0
-    // Remove currency symbols, spaces, thousands separators
     return parseFloat(val.replace(/[€$£,\s%]/g, '').replace(',', '.')) || 0
   }
 
   function cleanDate(val: string): string {
     if (!val) return ''
-    // Handle common date formats: DD/MM/YYYY, MM/DD/YYYY, YYYY-MM-DD, "Sep 1, 2024"
     const trimmed = val.trim()
-
-    // Already ISO format
     if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed
-
-    // DD/MM/YYYY or MM/DD/YYYY
     if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(trimmed)) {
       const parts = trimmed.split('/')
-      // Assume DD/MM/YYYY for European format (Google Ads Italy)
       return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`
     }
-
-    // Try native Date parse as fallback
     const d = new Date(trimmed)
     if (!isNaN(d.getTime())) return d.toISOString().split('T')[0]
-
     return trimmed
+  }
+
+  function readFileAsText(f: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = e => resolve(e.target?.result as string)
+      reader.onerror = () => reject(new Error('Failed to read file'))
+      reader.readAsText(f)
+    })
   }
 
   async function uploadData() {
@@ -135,42 +127,48 @@ export default function UploadClient({ clients }: Props) {
     setError('')
 
     try {
-      const reader = new FileReader()
-      reader.onload = async e => {
-        const text = e.target?.result as string
-        const { rows } = parseCSV(text)
+      const text = await readFileAsText(file!)
+      const { rows } = parseCSV(text)
 
-        const records = rows.map(row => ({
-          client_id: clientId,
-          platform,
-          date: cleanDate(row[mapping.date] || ''),
-          spend: cleanNumber(row[mapping.spend] || '0'),
-          impressions: cleanNumber(row[mapping.impressions] || '0'),
-          clicks: cleanNumber(row[mapping.clicks] || '0'),
-          conversions: cleanNumber(row[mapping.conversions] || '0'),
-          leads: cleanNumber(row[mapping.leads] || '0'),
-          conversion_value: cleanNumber(row[mapping.conversion_value] || '0'),
-        })).filter(r => r.date && r.date.length === 10)
+      const records = rows.map(row => ({
+        client_id: clientId,
+        platform,
+        date: cleanDate(row[mapping.date] || ''),
+        spend: cleanNumber(row[mapping.spend] || '0'),
+        impressions: cleanNumber(row[mapping.impressions] || '0'),
+        clicks: cleanNumber(row[mapping.clicks] || '0'),
+        conversions: cleanNumber(row[mapping.conversions] || '0'),
+        leads: cleanNumber(row[mapping.leads] || '0'),
+        conversion_value: cleanNumber(row[mapping.conversion_value] || '0'),
+      })).filter(r => r.date && r.date.length === 10)
 
-        if (!records.length) { setError('No valid rows found. Check your date column format.'); setLoading(false); return }
-
-        // Upsert in batches of 100
-        const batchSize = 100
-        for (let i = 0; i < records.length; i += batchSize) {
-          const batch = records.slice(i, i + batchSize)
-          const { error: err } = await supabase
-            .from('metrics_cache')
-            .upsert(batch, { onConflict: 'client_id,platform,date' })
-          if (err) throw new Error(err.message)
-        }
-
-        setSuccess(true)
-        setStep('done')
+      if (!records.length) {
+        setError('No valid rows found. Check your date column format.')
         setLoading(false)
+        return
       }
-      reader.readAsText(file!)
+
+      console.log('First record:', JSON.stringify(records[0]))
+      console.log('Total records:', records.length)
+
+      const batchSize = 100
+      for (let i = 0; i < records.length; i += batchSize) {
+        const batch = records.slice(i, i + batchSize)
+        const { error: err } = await supabase
+          .from('metrics_cache')
+          .upsert(batch, { onConflict: 'client_id,platform,date' })
+        if (err) {
+          console.error('Supabase error:', err)
+          throw new Error(err.message)
+        }
+      }
+
+      setSuccess(true)
+      setStep('done')
     } catch (err: any) {
-      setError(err.message)
+      console.error('Upload error:', err)
+      setError(err.message || 'Upload failed. Check the console for details.')
+    } finally {
       setLoading(false)
     }
   }
@@ -195,7 +193,6 @@ export default function UploadClient({ clients }: Props) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      {/* Topbar */}
       <div style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)', padding: '0 28px', height: '64px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
         <div>
           <div style={{ fontFamily: 'Syne, sans-serif', fontSize: '20px', fontWeight: 700 }}>Import Data</div>
@@ -208,12 +205,9 @@ export default function UploadClient({ clients }: Props) {
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '24px 28px' }}>
         <div style={{ maxWidth: '720px', margin: '0 auto' }}>
-
-          {/* Step indicators */}
           <div style={{ display: 'flex', gap: '8px', marginBottom: '28px', alignItems: 'center' }}>
             {[['1', 'Upload File'], ['2', 'Map Columns'], ['3', 'Done']].map(([num, label], i) => {
-              const stepKey = ['upload', 'map', 'done'][i]
-              const active = step === stepKey
+              const active = step === ['upload', 'map', 'done'][i]
               const done = (step === 'map' && i === 0) || (step === 'done' && i < 2)
               return (
                 <div key={num} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -229,10 +223,8 @@ export default function UploadClient({ clients }: Props) {
             })}
           </div>
 
-          {/* STEP 1: Upload */}
           {step === 'upload' && (
             <>
-              {/* Client + Platform selectors */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-mid)', marginBottom: '6px' }}>Client</label>
@@ -248,34 +240,21 @@ export default function UploadClient({ clients }: Props) {
                   </select>
                 </div>
               </div>
-
-              {/* Drop zone */}
               <div
                 onDragOver={e => { e.preventDefault(); setDragging(true) }}
                 onDragLeave={() => setDragging(false)}
                 onDrop={e => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f) }}
                 onClick={() => fileRef.current?.click()}
-                style={{
-                  border: `2px dashed ${dragging ? 'var(--cyan)' : 'var(--border)'}`,
-                  borderRadius: '16px', padding: '60px 40px', textAlign: 'center', cursor: 'pointer',
-                  background: dragging ? 'rgba(0,200,224,0.05)' : 'var(--surface2)',
-                  transition: 'all 0.2s', marginBottom: '16px',
-                }}
+                style={{ border: `2px dashed ${dragging ? 'var(--cyan)' : 'var(--border)'}`, borderRadius: '16px', padding: '60px 40px', textAlign: 'center', cursor: 'pointer', background: dragging ? 'rgba(0,200,224,0.05)' : 'var(--surface2)', transition: 'all 0.2s', marginBottom: '16px' }}
               >
                 <div style={{ fontSize: '40px', marginBottom: '12px' }}>📂</div>
-                <div style={{ fontFamily: 'Syne, sans-serif', fontSize: '16px', fontWeight: 700, marginBottom: '8px' }}>
-                  Drop your CSV file here
-                </div>
+                <div style={{ fontFamily: 'Syne, sans-serif', fontSize: '16px', fontWeight: 700, marginBottom: '8px' }}>Drop your CSV file here</div>
                 <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '16px' }}>
                   Export from {platform === 'google' ? 'Google Ads → Reports → Download' : 'Meta Ads Manager → Export'} and drop it here
                 </div>
-                <div style={{ display: 'inline-block', padding: '8px 20px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '13px', fontWeight: 600, color: 'var(--text-mid)' }}>
-                  Or click to browse
-                </div>
+                <div style={{ display: 'inline-block', padding: '8px 20px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '13px', fontWeight: 600, color: 'var(--text-mid)' }}>Or click to browse</div>
                 <input ref={fileRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f) }} />
               </div>
-
-              {/* How to export instructions */}
               <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '20px' }}>
                 <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 700, marginBottom: '12px', fontSize: '14px' }}>
                   How to export from {platform === 'google' ? 'Google Ads' : 'Meta Ads'}
@@ -301,7 +280,6 @@ export default function UploadClient({ clients }: Props) {
             </>
           )}
 
-          {/* STEP 2: Map columns */}
           {step === 'map' && (
             <>
               <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '20px', marginBottom: '20px' }}>
@@ -311,15 +289,9 @@ export default function UploadClient({ clients }: Props) {
                     <div style={{ fontWeight: 600 }}>{file?.name}</div>
                     <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{preview.length} preview rows loaded</div>
                   </div>
-                  <button onClick={() => setStep('upload')} style={{ marginLeft: 'auto', padding: '6px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>
-                    ← Change file
-                  </button>
+                  <button onClick={() => setStep('upload')} style={{ marginLeft: 'auto', padding: '6px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>← Change file</button>
                 </div>
-
-                <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '16px' }}>
-                  Map your CSV columns to AdsDash fields. We've auto-detected where possible.
-                </div>
-
+                <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '16px' }}>Map your CSV columns to AdsDash fields. We've auto-detected where possible.</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   {[...requiredFields, ...optionalFields].map(field => (
                     <div key={field} style={{ display: 'grid', gridTemplateColumns: '160px 1fr', gap: '12px', alignItems: 'center' }}>
@@ -336,7 +308,6 @@ export default function UploadClient({ clients }: Props) {
                 </div>
               </div>
 
-              {/* Preview */}
               {preview.length > 0 && mapping.date && mapping.spend && (
                 <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '20px', marginBottom: '20px', overflowX: 'auto' }}>
                   <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 700, marginBottom: '12px', fontSize: '14px' }}>Preview (first 3 rows)</div>
@@ -344,9 +315,7 @@ export default function UploadClient({ clients }: Props) {
                     <thead>
                       <tr>
                         {['date', 'spend', 'impressions', 'clicks', 'conversions'].map(f => (
-                          <th key={f} style={{ padding: '6px 12px', textAlign: 'left', color: 'var(--text-muted)', fontWeight: 600, borderBottom: '1px solid var(--border)' }}>
-                            {f}
-                          </th>
+                          <th key={f} style={{ padding: '6px 12px', textAlign: 'left', color: 'var(--text-muted)', fontWeight: 600, borderBottom: '1px solid var(--border)' }}>{f}</th>
                         ))}
                       </tr>
                     </thead>
@@ -372,9 +341,7 @@ export default function UploadClient({ clients }: Props) {
               )}
 
               <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                <button onClick={() => setStep('upload')} style={{ padding: '10px 20px', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-mid)' }}>
-                  ← Back
-                </button>
+                <button onClick={() => setStep('upload')} style={{ padding: '10px 20px', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-mid)' }}>← Back</button>
                 <button onClick={uploadData} disabled={loading || !mapping.date || !mapping.spend} style={{ padding: '10px 24px', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', background: loading ? 'var(--surface3)' : 'var(--cyan)', color: loading ? 'var(--text-muted)' : '#080c0f', border: 'none', fontFamily: 'Syne, sans-serif' }}>
                   {loading ? '⏳ Importing...' : '⬆ Import Data →'}
                 </button>
@@ -382,7 +349,6 @@ export default function UploadClient({ clients }: Props) {
             </>
           )}
 
-          {/* STEP 3: Done */}
           {step === 'done' && (
             <div style={{ textAlign: 'center', padding: '60px 40px', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '16px' }}>
               <div style={{ fontSize: '56px', marginBottom: '16px' }}>✅</div>
@@ -391,12 +357,10 @@ export default function UploadClient({ clients }: Props) {
                 Your {platform === 'google' ? 'Google Ads' : 'Meta Ads'} data is now live in the dashboard.
               </div>
               <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
-                <button onClick={() => { setStep('upload'); setFile(null); setPreview([]); setMapping({}); setSuccess(false) }}
-                  style={{ padding: '10px 20px', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-mid)' }}>
+                <button onClick={() => { setStep('upload'); setFile(null); setPreview([]); setMapping({}); setSuccess(false) }} style={{ padding: '10px 20px', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-mid)' }}>
                   ⬆ Import another file
                 </button>
-                <button onClick={() => window.location.href = `/dashboard?client=${clientId}`}
-                  style={{ padding: '10px 24px', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', background: 'var(--cyan)', color: '#080c0f', border: 'none', fontFamily: 'Syne, sans-serif' }}>
+                <button onClick={() => window.location.href = `/dashboard?client=${clientId}`} style={{ padding: '10px 24px', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', background: 'var(--cyan)', color: '#080c0f', border: 'none', fontFamily: 'Syne, sans-serif' }}>
                   View Dashboard →
                 </button>
               </div>
