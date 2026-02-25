@@ -1,39 +1,17 @@
 "use client";
-
-import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useEffect, useState } from "react";
 
 export default function LoginPage() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState("Loading...");
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setLoading(true);
-    setError("");
-
-    const supabase = createClient();
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-
-    if (error) {
-      setError(error.message);
-      setLoading(false);
-    } else {
-      window.location.href = "/dashboard";
-    }
-  }
+  useEffect(() => {
+    setMsg("JS is working!");
+  }, []);
 
   return (
-    <div style={{ maxWidth: 420, margin: "60px auto", color: "white" }}>
-      <h1>AdsDash Login</h1>
-      <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <input value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" type="email" required />
-        <input value={password} onChange={e => setPassword(e.target.value)} placeholder="Password" type="password" required />
-        <button type="submit" disabled={loading}>{loading ? "Signing in..." : "Sign in"}</button>
-      </form>
-      {error && <p style={{ color: "red" }}>{error}</p>}
+    <div style={{ background: "black", color: "white", minHeight: "100vh", padding: 40 }}>
+      <h1>{msg}</h1>
+      <p>URL: {process.env.NEXT_PUBLIC_SUPABASE_URL || "ENV VAR MISSING"}</p>
     </div>
   );
 }
