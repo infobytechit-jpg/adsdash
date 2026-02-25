@@ -9,10 +9,7 @@ export default async function DashboardLayout({
   children: React.ReactNode;
 }) {
   const supabase = createClient();
-  const { data: { user }, error } = await supabase.auth.getUser();
-  
-  console.log("DASHBOARD LAYOUT - user:", user?.email, "error:", error?.message);
-  
+  const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
   return <>{children}</>;
 }
