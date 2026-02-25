@@ -15,7 +15,6 @@ export default async function DashboardPage({
     .from('profiles').select('*').eq('id', user.id).single()
 
   const isAdmin = profile?.role === 'admin'
-
   let clientId: string | null = null
   let clientData: any = null
 
@@ -27,7 +26,7 @@ export default async function DashboardPage({
     const { data } = await supabase.from('clients').select('*').eq('user_id', user.id).single()
     clientData = data
     clientId = data?.id
-  } else if (isAdmin) {
+  } else {
     const { data } = await supabase.from('clients').select('*').order('name').limit(1).single()
     clientData = data
     clientId = data?.id
@@ -35,9 +34,9 @@ export default async function DashboardPage({
 
   const period = searchParams.period || 'week'
   const platform = searchParams.platform || 'all'
-
   const endDate = new Date()
   const startDate = new Date()
+
   if (period === 'today') startDate.setHours(0, 0, 0, 0)
   else if (period === 'week') startDate.setDate(startDate.getDate() - 7)
   else if (period === 'month') startDate.setDate(1)
@@ -45,7 +44,6 @@ export default async function DashboardPage({
 
   const startStr = startDate.toISOString().split('T')[0]
   const endStr = endDate.toISOString().split('T')[0]
-
   let metrics: any[] = []
   let campaigns: any[] = []
 
@@ -54,4 +52,32 @@ export default async function DashboardPage({
       .from('metrics_cache')
       .select('*')
       .eq('client_id', clientId)
-      .gte('date', s
+      .gte('date', startStr)
+      .lte('date', endStr)
+      .order('date', { ascending: true })
+
+    if (platform !== 'all') metricsQuery = metricsQuery.eq('platform', platform)
+    const { data: metricsData } = await metricsQuery
+    metrics = metricsData || []
+
+    const { data: campData } = await supabase
+      .from('campaign_metrics')
+      .select('*, campaigns(campaign_name, platform, status, platform_campaign_id)')
+      .eq('client_id', clientId)
+      .gte('date', startStr)
+      .lte('date', endStr)
+    campaigns = campData || []
+  }
+
+  return (
+    <DashboardClient
+      profile={profile}
+      clientData={clientData}
+      metrics={metrics}
+      campaigns={campaigns}
+      period={period}
+      platform={platform}
+      isAdmin={isAdmin}
+    />
+  )
+}
