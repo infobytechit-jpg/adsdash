@@ -93,11 +93,18 @@ export default function UploadClient({ clients, adAccounts }: Props) {
     reader.readAsText(f)
   }
 
-  function cleanNumber(val: string): number {
-    if (!val) return 0
-    return parseFloat(val.replace(/[€$£\s%]/g, '').replace(/\./g, '').replace(',', '.')) || 0
+function cleanNumber(val: string): number {
+  if (!val) return 0
+  let v = val.replace(/[€$£\s%]/g, '').trim()
+  // Italian format: 1.234,56 → dot=thousands, comma=decimal
+  if (/\d\.\d{3}/.test(v) || (/,/.test(v) && /\./.test(v))) {
+    v = v.replace(/\./g, '').replace(',', '.')
+  } else {
+    // English format or plain: 1,234.56 or 1234.56
+    v = v.replace(/,/g, '')
   }
-
+  return parseFloat(v) || 0
+}
   function cleanDate(val: string): string {
     if (!val) return ''
     const t = val.trim()
