@@ -1,7 +1,8 @@
 'use client'
 
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
+import { createClient } from '@/lib/supabase/client'
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell
@@ -15,18 +16,65 @@ interface Props {
   period: string
   platform: string
   isAdmin: boolean
+  accounts: string[]
+  selectedAccount: string
 }
 
 const COLORS = ['#00C8E0', '#a855f7', '#ffc53d', '#00e09e']
 
-export default function DashboardClient({ profile, clientData, metrics, campaigns, period, platform, isAdmin }: Props) {
+const ALL_METRICS = [
+  { key: 'spend', label: '💰 Total Spend', accent: '#00C8E0' },
+  { key: 'conversions', label: '✅ Conversions', accent: '#00e09e' },
+  { key: 'roas', label: '📈 ROAS', accent: '#ffc53d' },
+  { key: 'leads', label: '🎯 Leads', accent: '#a855f7' },
+  { key: 'clicks', label: '🖱 Clicks', accent: '#4285F4' },
+  { key: 'impressions', label: '👁 Impressions', accent: '#1877F2' },
+  { key: 'cpc', label: '💡 CPC', accent: '#f97316' },
+  { key: 'ctr', label: '📊 CTR', accent: '#00e09e' },
+]
+
+export default function DashboardClient({ profile, clientData, metrics, campaigns, period, platform, isAdmin, accounts, selectedAccount }: Props) {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const supabase = createClient()
+
+  // Metric visibility state — admin starts with their own prefs, clients use clientData settings
+  const defaultVisible = {
+    spend: clientData?.show_spend ?? true,
+    conversions: clientData?.show_conversions ?? true,
+    roas: clientData?.show_roas ?? true,
+    leads: clientData?.show_leads ?? true,
+    clicks: clientData?.show_clicks ?? false,
+    impressions: clientData?.show_impressions ?? false,
+    cpc: clientData?.show_cpc ?? false,
+    ctr: clientData?.show_ctr ?? false,
+  }
+
+  const [visibleMetrics, setVisibleMetrics] = useState<Record<string, boolean>>(defaultVisible)
+  const [showMetricPicker, setShowMetricPicker] = useState(false)
+  const [savingMetrics, setSavingMetrics] = useState(false)
 
   function setParam(key: string, val: string) {
     const params = new URLSearchParams(searchParams.toString())
     params.set(key, val)
     router.push(`/dashboard?${params.toString()}`)
+  }
+
+  async function saveMetricVisibility() {
+    if (!clientData?.id) return
+    setSavingMetrics(true)
+    await supabase.from('clients').update({
+      show_spend: visibleMetrics.spend,
+      show_conversions: visibleMetrics.conversions,
+      show_roas: visibleMetrics.roas,
+      show_leads: visibleMetrics.leads,
+      show_clicks: visibleMetrics.clicks,
+      show_impressions: visibleMetrics.impressions,
+      show_cpc: visibleMetrics.cpc,
+      show_ctr: visibleMetrics.ctr,
+    }).eq('id', clientData.id)
+    setSavingMetrics(false)
+    setShowMetricPicker(false)
   }
 
   const totals = useMemo(() => {
@@ -41,6 +89,8 @@ export default function DashboardClient({ profile, clientData, metrics, campaign
   }, [metrics])
 
   const roas = totals.spend > 0 ? (totals.conversion_value / totals.spend).toFixed(2) : '0.00'
+  const cpc = totals.clicks > 0 ? (totals.spend / totals.clicks).toFixed(2) : '0.00'
+  const ctr = totals.impressions > 0 ? ((totals.clicks / totals.impressions) * 100).toFixed(2) : '0.00'
 
   const gMetrics = metrics.filter(m => m.platform === 'google')
   const mMetrics = metrics.filter(m => m.platform === 'meta')
@@ -49,7 +99,6 @@ export default function DashboardClient({ profile, clientData, metrics, campaign
   const gConv = gMetrics.reduce((a, m) => a + Number(m.conversions || 0), 0)
   const mConv = mMetrics.reduce((a, m) => a + Number(m.conversions || 0), 0)
 
-  // Build chart data grouped by date
   const chartData = useMemo(() => {
     const byDate: Record<string, any> = {}
     metrics.forEach(m => {
@@ -61,14 +110,12 @@ export default function DashboardClient({ profile, clientData, metrics, campaign
     return Object.values(byDate).sort((a: any, b: any) => a.date.localeCompare(b.date))
   }, [metrics])
 
-  // Conversion types for donut
   const convData = [
     { name: 'Purchase', value: Math.round(totals.conversions * 0.42) },
     { name: 'Lead Form', value: Math.round(totals.conversions * 0.33) },
     { name: 'Phone Call', value: Math.round(totals.conversions * 0.25) },
   ]
 
-  // Campaign aggregation
   const campaignMap: Record<string, any> = {}
   campaigns.forEach((cm: any) => {
     const key = cm.campaign_id
@@ -86,26 +133,17 @@ export default function DashboardClient({ profile, clientData, metrics, campaign
     campaignMap[key].conversion_value += Number(cm.conversion_value || 0)
   })
   const campaignList = Object.values(campaignMap)
-
-  const show = clientData || {}
-  const showSpend = show.show_spend !== false
-  const showConv = show.show_conversions !== false
-  const showRoas = show.show_roas !== false
-  const showLeads = show.show_leads !== false
-  const showClicks = show.show_clicks === true
-  const showImpressions = show.show_impressions === true
+  const noData = metrics.length === 0
 
   function fmt(n: number) {
     return new Intl.NumberFormat('it-IT', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n)
   }
-  function fmtEur(n: number) {
-    return '€' + fmt(n)
-  }
+  function fmtEur(n: number) { return '€' + fmt(n) }
 
   async function exportCSV() {
     const rows = [
-      ['Date', 'Platform', 'Spend', 'Conversions', 'Leads', 'Clicks', 'Impressions'],
-      ...metrics.map(m => [m.date, m.platform, m.spend, m.conversions, m.leads, m.clicks, m.impressions])
+      ['Date', 'Platform', 'Account', 'Spend', 'Conversions', 'Leads', 'Clicks', 'Impressions'],
+      ...metrics.map(m => [m.date, m.platform, m.account_name || '', m.spend, m.conversions, m.leads, m.clicks, m.impressions])
     ]
     const csv = rows.map(r => r.join(',')).join('\n')
     const blob = new Blob([csv], { type: 'text/csv' })
@@ -116,7 +154,16 @@ export default function DashboardClient({ profile, clientData, metrics, campaign
     a.click()
   }
 
-  const noData = metrics.length === 0
+  const kpiValues: Record<string, { value: string; sub: string }> = {
+    spend: { value: fmtEur(totals.spend), sub: `G: ${fmtEur(gSpend)} · M: ${fmtEur(mSpend)}` },
+    conversions: { value: fmt(totals.conversions), sub: `G: ${fmt(gConv)} · M: ${fmt(mConv)}` },
+    roas: { value: `${roas}x`, sub: 'Return on ad spend' },
+    leads: { value: fmt(totals.leads), sub: 'Form fills & calls' },
+    clicks: { value: fmt(totals.clicks), sub: 'Total link clicks' },
+    impressions: { value: fmt(totals.impressions), sub: 'Total impressions' },
+    cpc: { value: `€${cpc}`, sub: 'Cost per click' },
+    ctr: { value: `${ctr}%`, sub: 'Click-through rate' },
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
@@ -127,7 +174,7 @@ export default function DashboardClient({ profile, clientData, metrics, campaign
             {clientData?.name || 'Dashboard'}
           </div>
           <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '1px' }}>
-            {noData ? 'No data yet — connect your ad accounts to see metrics' : `Google Ads + Meta Ads · ${period} view`}
+            {noData ? 'No data yet — import a CSV to see metrics' : `Google Ads + Meta Ads · ${period} view`}
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -143,8 +190,16 @@ export default function DashboardClient({ profile, clientData, metrics, campaign
               </button>
             ))}
           </div>
-          <button onClick={exportCSV} style={{ padding: '8px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-mid)' }}>
-            ⬇ Export CSV
+
+          {/* Metric picker button (admin only) */}
+          {isAdmin && (
+            <button onClick={() => setShowMetricPicker(true)} style={{ padding: '7px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-mid)' }}>
+              ⊞ Metrics
+            </button>
+          )}
+
+          <button onClick={exportCSV} style={{ padding: '7px 14px', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-mid)' }}>
+            ⬇ Export
           </button>
         </div>
       </div>
@@ -152,8 +207,9 @@ export default function DashboardClient({ profile, clientData, metrics, campaign
       {/* Content */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '24px 28px' }}>
 
-        {/* Platform pills */}
-        <div style={{ display: 'flex', gap: '10px', marginBottom: '24px' }}>
+        {/* Filters row: Platform + Account */}
+        <div style={{ display: 'flex', gap: '10px', marginBottom: '24px', flexWrap: 'wrap' }}>
+          {/* Platform pills */}
           {[
             { key: 'all', label: 'All Platforms', color: '#00C8E0' },
             { key: 'google', label: 'Google Ads', color: '#4285F4' },
@@ -161,7 +217,7 @@ export default function DashboardClient({ profile, clientData, metrics, campaign
           ].map(p => (
             <button key={p.key} onClick={() => setParam('platform', p.key)} style={{
               display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px',
-              borderRadius: '100px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s',
+              borderRadius: '100px', fontSize: '13px', fontWeight: 600, cursor: 'pointer',
               border: `1px solid ${platform === p.key ? p.color : 'var(--border)'}`,
               background: platform === p.key ? `${p.color}20` : 'var(--surface2)',
               color: platform === p.key ? p.color : 'var(--text-muted)',
@@ -170,38 +226,61 @@ export default function DashboardClient({ profile, clientData, metrics, campaign
               {p.label}
             </button>
           ))}
+
+          {/* Account selector — only show if multiple accounts */}
+          {accounts.length > 1 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: 'auto' }}>
+              <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 600 }}>Account:</span>
+              <div style={{ display: 'flex', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden' }}>
+                <button onClick={() => setParam('account', 'all')} style={{
+                  padding: '7px 14px', fontSize: '12px', fontWeight: 600, border: 'none', cursor: 'pointer',
+                  background: selectedAccount === 'all' ? 'var(--cyan)' : 'transparent',
+                  color: selectedAccount === 'all' ? 'var(--black)' : 'var(--text-muted)',
+                }}>All</button>
+                {accounts.map(acc => (
+                  <button key={acc} onClick={() => setParam('account', acc)} style={{
+                    padding: '7px 14px', fontSize: '12px', fontWeight: 600, border: 'none', cursor: 'pointer',
+                    background: selectedAccount === acc ? 'var(--cyan)' : 'transparent',
+                    color: selectedAccount === acc ? 'var(--black)' : 'var(--text-muted)',
+                    borderLeft: '1px solid var(--border)',
+                  }}>{acc}</button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {noData && (
           <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '40px', textAlign: 'center', marginBottom: '24px' }}>
             <div style={{ fontSize: '40px', marginBottom: '12px' }}>📊</div>
             <div style={{ fontFamily: 'Syne, sans-serif', fontSize: '18px', fontWeight: 700, marginBottom: '8px' }}>No data yet</div>
-            <div style={{ color: 'var(--text-muted)', fontSize: '14px' }}>
-              {isAdmin ? 'Connect ad accounts in the Admin panel to start pulling data.' : 'Your data will appear here once your ad accounts are connected.'}
+            <div style={{ color: 'var(--text-muted)', fontSize: '14px', marginBottom: '20px' }}>
+              {isAdmin ? 'Import a CSV from Google Ads or Meta Ads to get started.' : 'Your data will appear here once your ad accounts are connected.'}
             </div>
+            {isAdmin && (
+              <button onClick={() => window.location.href = '/dashboard/Upload'} style={{ padding: '10px 24px', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', background: 'var(--cyan)', color: '#080c0f', border: 'none' }}>
+                ⬆ Import Data →
+              </button>
+            )}
           </div>
         )}
 
         {/* KPI Cards */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '24px' }}>
-          {showSpend && <KpiCard label="💰 Total Spend" value={fmtEur(totals.spend)} accent="#00C8E0"
-            sub={`G: ${fmtEur(gSpend)} · M: ${fmtEur(mSpend)}`} />}
-          {showConv && <KpiCard label="✅ Conversions" value={fmt(totals.conversions)} accent="#00e09e"
-            sub={`G: ${fmt(gConv)} · M: ${fmt(mConv)}`} />}
-          {showRoas && <KpiCard label="📈 ROAS" value={`${roas}x`} accent="#ffc53d"
-            sub="Return on ad spend" />}
-          {showLeads && <KpiCard label="🎯 Leads" value={fmt(totals.leads)} accent="#a855f7"
-            sub="Form fills & calls" />}
-          {showClicks && <KpiCard label="🖱 Clicks" value={fmt(totals.clicks)} accent="#4285F4"
-            sub="Total link clicks" />}
-          {showImpressions && <KpiCard label="👁 Impressions" value={fmt(totals.impressions)} accent="#1877F2"
-            sub="Total impressions" />}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+          {ALL_METRICS.filter(m => visibleMetrics[m.key]).map(m => (
+            <KpiCard
+              key={m.key}
+              label={m.label}
+              value={kpiValues[m.key]?.value || '—'}
+              accent={m.accent}
+              sub={kpiValues[m.key]?.sub || ''}
+            />
+          ))}
         </div>
 
         {/* Charts row */}
         {!noData && (
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '16px', marginBottom: '24px' }}>
-            {/* Spend chart */}
             <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '20px' }}>
               <div style={{ fontFamily: 'Syne, sans-serif', fontSize: '15px', fontWeight: 700, marginBottom: '4px' }}>Spend Over Time</div>
               <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '20px' }}>Daily spend breakdown</div>
@@ -209,12 +288,12 @@ export default function DashboardClient({ profile, clientData, metrics, campaign
                 <AreaChart data={chartData}>
                   <defs>
                     <linearGradient id="gGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#4285F4" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="#4285F4" stopOpacity={0}/>
+                      <stop offset="5%" stopColor="#4285F4" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#4285F4" stopOpacity={0} />
                     </linearGradient>
                     <linearGradient id="mGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#1877F2" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="#1877F2" stopOpacity={0}/>
+                      <stop offset="5%" stopColor="#1877F2" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#1877F2" stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <XAxis dataKey="date" tick={{ fill: '#5a7080', fontSize: 10 }} tickFormatter={d => d.slice(5)} />
@@ -236,7 +315,6 @@ export default function DashboardClient({ profile, clientData, metrics, campaign
               </div>
             </div>
 
-            {/* Donut chart */}
             <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '20px' }}>
               <div style={{ fontFamily: 'Syne, sans-serif', fontSize: '15px', fontWeight: 700, marginBottom: '4px' }}>Conversion Types</div>
               <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '12px' }}>Breakdown</div>
@@ -265,11 +343,9 @@ export default function DashboardClient({ profile, clientData, metrics, campaign
         {/* Campaigns table */}
         {campaignList.length > 0 && (
           <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
-            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <div style={{ fontFamily: 'Syne, sans-serif', fontSize: '15px', fontWeight: 700 }}>Campaign Performance</div>
-                <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>All campaigns in selected period</div>
-              </div>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)' }}>
+              <div style={{ fontFamily: 'Syne, sans-serif', fontSize: '15px', fontWeight: 700 }}>Campaign Performance</div>
+              <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>All campaigns in selected period</div>
             </div>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
@@ -309,6 +385,43 @@ export default function DashboardClient({ profile, clientData, metrics, campaign
           </div>
         )}
       </div>
+
+      {/* METRIC PICKER MODAL */}
+      {showMetricPicker && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }}
+          onClick={e => { if (e.target === e.currentTarget) setShowMetricPicker(false) }}>
+          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '16px', padding: '28px', width: '480px' }}>
+            <div style={{ fontFamily: 'Syne, sans-serif', fontSize: '20px', fontWeight: 800, marginBottom: '4px' }}>Customize Metrics</div>
+            <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '24px' }}>
+              Choose which metrics are visible. {isAdmin && 'This also updates what the client sees.'}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '24px' }}>
+              {ALL_METRICS.map(m => (
+                <div key={m.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: 'var(--surface2)', border: `1px solid ${visibleMetrics[m.key] ? m.accent + '40' : 'var(--border)'}`, borderRadius: '8px', transition: 'border-color 0.2s' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: m.accent }} />
+                    <span style={{ fontSize: '14px', fontWeight: 500 }}>{m.label}</span>
+                  </div>
+                  <button
+                    onClick={() => setVisibleMetrics(prev => ({ ...prev, [m.key]: !prev[m.key] }))}
+                    style={{ width: '40px', height: '22px', background: visibleMetrics[m.key] ? m.accent : 'var(--surface3)', borderRadius: '100px', position: 'relative', cursor: 'pointer', border: 'none', transition: 'background 0.2s', flexShrink: 0 }}
+                  >
+                    <div style={{ position: 'absolute', width: '16px', height: '16px', borderRadius: '50%', background: 'white', top: '3px', left: visibleMetrics[m.key] ? '21px' : '3px', transition: 'left 0.2s' }} />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '16px', borderTop: '1px solid var(--border)' }}>
+              <button onClick={() => setShowMetricPicker(false)} style={{ padding: '9px 18px', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-mid)' }}>
+                Cancel
+              </button>
+              <button onClick={saveMetricVisibility} disabled={savingMetrics} style={{ padding: '9px 18px', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', background: 'var(--cyan)', color: '#080c0f', border: 'none' }}>
+                {savingMetrics ? 'Saving...' : 'Save & Apply →'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

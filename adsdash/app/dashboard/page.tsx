@@ -5,7 +5,7 @@ import DashboardClient from '@/components/DashboardClient'
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: { client?: string; period?: string; platform?: string }
+  searchParams: { client?: string; period?: string; platform?: string; account?: string }
 }) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -34,9 +34,10 @@ export default async function DashboardPage({
 
   const period = searchParams.period || 'week'
   const platform = searchParams.platform || 'all'
+  const accountName = searchParams.account || 'all'
+
   const endDate = new Date()
   const startDate = new Date()
-
   if (period === 'today') startDate.setHours(0, 0, 0, 0)
   else if (period === 'week') startDate.setDate(startDate.getDate() - 7)
   else if (period === 'month') startDate.setDate(1)
@@ -44,10 +45,20 @@ export default async function DashboardPage({
 
   const startStr = startDate.toISOString().split('T')[0]
   const endStr = endDate.toISOString().split('T')[0]
+
   let metrics: any[] = []
   let campaigns: any[] = []
+  let accounts: string[] = []
 
   if (clientId) {
+    const { data: accountData } = await supabase
+      .from('metrics_cache')
+      .select('account_name')
+      .eq('client_id', clientId)
+      .not('account_name', 'is', null)
+
+    accounts = [...new Set((accountData || []).map((a: any) => a.account_name).filter(Boolean))]
+
     let metricsQuery = supabase
       .from('metrics_cache')
       .select('*')
@@ -57,6 +68,8 @@ export default async function DashboardPage({
       .order('date', { ascending: true })
 
     if (platform !== 'all') metricsQuery = metricsQuery.eq('platform', platform)
+    if (accountName !== 'all') metricsQuery = metricsQuery.eq('account_name', accountName)
+
     const { data: metricsData } = await metricsQuery
     metrics = metricsData || []
 
@@ -78,6 +91,8 @@ export default async function DashboardPage({
       period={period}
       platform={platform}
       isAdmin={isAdmin}
+      accounts={accounts}
+      selectedAccount={accountName}
     />
   )
 }
