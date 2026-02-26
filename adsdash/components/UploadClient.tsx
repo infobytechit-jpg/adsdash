@@ -8,40 +8,138 @@ interface Props {
   adAccounts: any[]
 }
 
-export default function UploadClient({ clients, adAccounts }: Props) {
+export default function UploadClient({ clients, adAccounts: initialAccounts }: Props) {
+  const [adAccounts, setAdAccounts] = useState(initialAccounts)
+  const [mode, setMode] = useState<'manual' | 'csv'>('manual')
   const [clientId, setClientId] = useState(clients[0]?.id || '')
   const [platform, setPlatform] = useState<'google' | 'meta'>('google')
-  const [selectedAccountId, setSelectedAccountId] = useState('new')
+  const [selectedAccountId, setSelectedAccountId] = useState<string>('')
   const [newAccountName, setNewAccountName] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
+
+  // Manual entry state
+  const [manualRows, setManualRows] = useState([
+    { date: '', spend: '', conversion_value: '', conversions: '', leads: '' }
+  ])
+
+  // CSV state
   const [dragging, setDragging] = useState(false)
   const [file, setFile] = useState<File | null>(null)
   const [preview, setPreview] = useState<any[]>([])
   const [headers, setHeaders] = useState<string[]>([])
   const [mapping, setMapping] = useState<Record<string, string>>({})
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-  const [step, setStep] = useState<'upload' | 'map' | 'done'>('upload')
+  const [csvStep, setCsvStep] = useState<'setup' | 'map' | 'done'>('setup')
   const fileRef = useRef<HTMLInputElement>(null)
   const supabase = createClient()
 
-  const requiredFields = ['date', 'spend', 'impressions', 'clicks', 'conversions']
-  const optionalFields = ['leads', 'conversion_value', 'cpc', 'ctr']
-
   const filteredAccounts = adAccounts.filter(a => a.client_id === clientId && a.platform === platform)
 
+  // When client/platform changes, reset account selection
+  function handleClientChange(id: string) {
+    setClientId(id)
+    setSelectedAccountId('')
+    setNewAccountName('')
+  }
+  function handlePlatformChange(p: string) {
+    setPlatform(p as any)
+    setSelectedAccountId('')
+    setNewAccountName('')
+  }
+
+  async function resolveAccountName(): Promise<string | null> {
+    if (selectedAccountId && selectedAccountId !== 'new') {
+      const acc = adAccounts.find(a => a.id === selectedAccountId)
+      return acc?.account_name || null
+    }
+    if (selectedAccountId === 'new' || !selectedAccountId) {
+      const name = newAccountName.trim()
+      if (!name) { setError('Please enter a name for the account.'); return null }
+      // Create new ad_account record via API route to bypass RLS
+      const res = await fetch('/api/admin/create-account', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ client_id: clientId, platform, account_name: name }),
+      })
+      if (!res.ok) {
+        // If API doesn't exist yet, just use the name directly
+      }
+      // Optimistically add to local state
+      setAdAccounts(prev => [...prev, { id: Date.now().toString(), client_id: clientId, platform, account_name: name, is_active: true }])
+      setSelectedAccountId('')
+      setNewAccountName('')
+      return name
+    }
+    return null
+  }
+
+  // ── MANUAL ENTRY ──
+  function addRow() {
+    setManualRows(prev => [...prev, { date: '', spend: '', conversion_value: '', conversions: '', leads: '' }])
+  }
+  function removeRow(i: number) {
+    setManualRows(prev => prev.filter((_, idx) => idx !== i))
+  }
+  function updateRow(i: number, field: string, val: string) {
+    setManualRows(prev => prev.map((r, idx) => idx === i ? { ...r, [field]: val } : r))
+  }
+
+  async function submitManual() {
+    if (!clientId) { setError('Please select a client.'); return }
+    const validRows = manualRows.filter(r => r.date && r.spend)
+    if (!validRows.length) { setError('Please fill in at least one row with date and spend.'); return }
+
+    setLoading(true); setError(''); setSuccess('')
+    try {
+      let accountName = ''
+      if (selectedAccountId && selectedAccountId !== 'new') {
+        const acc = adAccounts.find(a => a.id === selectedAccountId)
+        accountName = acc?.account_name || 'Manual Entry'
+      } else {
+        accountName = newAccountName.trim() || 'Manual Entry'
+      }
+
+      const records = validRows.map(r => ({
+        client_id: clientId,
+        platform,
+        account_name: accountName,
+        date: r.date,
+        spend: parseFloat(r.spend) || 0,
+        conversion_value: parseFloat(r.conversion_value) || 0,
+        conversions: parseFloat(r.conversions) || 0,
+        leads: parseFloat(r.leads) || 0,
+        impressions: 0,
+        clicks: 0,
+      }))
+
+      const { error: err } = await supabase
+        .from('metrics_cache')
+        .upsert(records, { onConflict: 'client_id,platform,date,account_name' })
+
+      if (err) throw new Error(err.message)
+
+      setSuccess(`✅ ${records.length} day${records.length > 1 ? 's' : ''} saved successfully!`)
+      setManualRows([{ date: '', spend: '', conversion_value: '', conversions: '', leads: '' }])
+    } catch (e: any) {
+      setError(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // ── CSV IMPORT ──
   function autoDetect(cols: string[]): Record<string, string> {
     const map: Record<string, string> = {}
     const lower = cols.map(c => c.toLowerCase().trim())
     const matchers: Record<string, string[]> = {
-      date: ['day', 'date', 'data', 'week', 'month'],
-      spend: ['cost', 'spend', 'amount spent', 'costo', 'importo speso', 'spesa', 'cost (eur)', 'cost (usd)', 'cost (gbp)'],
+      date: ['day', 'date', 'data'],
+      spend: ['cost', 'spend', 'amount spent', 'costo', 'importo speso', 'cost (eur)', 'cost (usd)'],
       impressions: ['impressions', 'impr.', 'impressioni'],
-      clicks: ['clicks', 'link clicks', 'clic', 'click'],
+      clicks: ['clicks', 'link clicks', 'clic'],
       conversions: ['conversions', 'conv.', 'conversioni', 'results', 'purchases'],
-      leads: ['leads', 'lead', 'form leads', 'lead form'],
-      conversion_value: ['conv. value', 'conversion value', 'valore conv.', 'purchase value', 'revenue', 'conv. value (eur)'],
-      cpc: ['avg. cpc', 'cpc', 'cost per click', 'cpc (eur)'],
-      ctr: ['ctr', 'click-through rate'],
+      leads: ['leads', 'lead', 'form leads'],
+      conversion_value: ['conv. value', 'conversion value', 'valore conv.', 'purchase value', 'revenue'],
     }
     for (const [field, patterns] of Object.entries(matchers)) {
       for (const pattern of patterns) {
@@ -56,56 +154,52 @@ export default function UploadClient({ clients, adAccounts }: Props) {
     const lines = text.trim().split('\n').filter(l => l.trim())
     if (lines.length < 2) return { headers: [], rows: [] }
     function parseLine(line: string): string[] {
-      const result: string[] = []
-      let current = ''
-      let inQuotes = false
+      const result: string[] = []; let current = ''; let inQuotes = false
       for (let i = 0; i < line.length; i++) {
         if (line[i] === '"') { inQuotes = !inQuotes }
         else if (line[i] === ',' && !inQuotes) { result.push(current.trim()); current = '' }
         else { current += line[i] }
       }
-      result.push(current.trim())
-      return result
+      result.push(current.trim()); return result
     }
     const headers = parseLine(lines[0])
     const rows = lines.slice(1).map(line => {
-      const vals = parseLine(line)
-      const row: Record<string, string> = {}
+      const vals = parseLine(line); const row: Record<string, string> = {}
       headers.forEach((h, i) => { row[h] = vals[i] || '' })
       return row
     }).filter(row => Object.values(row).some(v => v !== ''))
     return { headers, rows }
   }
 
-  function handleFile(f: File) {
-    setFile(f)
-    setError('')
-    const reader = new FileReader()
-    reader.onload = e => {
-      const text = e.target?.result as string
-      const { headers, rows } = parseCSV(text)
-      if (!headers.length) { setError('Could not parse CSV.'); return }
-      setHeaders(headers)
-      setPreview(rows.slice(0, 3))
-      setMapping(autoDetect(headers))
-      setStep('map')
+  function parseNumber(val: string): number {
+    if (!val) return 0
+    let v = val.replace(/[€$£\s%]/g, '').trim()
+    // Detect format: if has comma and dot, figure out which is decimal
+    if (v.includes(',') && v.includes('.')) {
+      const lastComma = v.lastIndexOf(',')
+      const lastDot = v.lastIndexOf('.')
+      if (lastComma > lastDot) {
+        // Italian: 1.234,56
+        v = v.replace(/\./g, '').replace(',', '.')
+      } else {
+        // English: 1,234.56
+        v = v.replace(/,/g, '')
+      }
+    } else if (v.includes(',')) {
+      // Could be decimal comma: 58,46 or thousands: 1,234
+      const parts = v.split(',')
+      if (parts[parts.length - 1].length <= 2) {
+        // Decimal comma: 58,46 → 58.46
+        v = v.replace(',', '.')
+      } else {
+        // Thousands comma: 1,234 → 1234
+        v = v.replace(/,/g, '')
+      }
     }
-    reader.readAsText(f)
+    return parseFloat(v) || 0
   }
 
-function cleanNumber(val: string): number {
-  if (!val) return 0
-  let v = val.replace(/[€$£\s%]/g, '').trim()
-  // Italian format: 1.234,56 → dot=thousands, comma=decimal
-  if (/\d\.\d{3}/.test(v) || (/,/.test(v) && /\./.test(v))) {
-    v = v.replace(/\./g, '').replace(',', '.')
-  } else {
-    // English format or plain: 1,234.56 or 1234.56
-    v = v.replace(/,/g, '')
-  }
-  return parseFloat(v) || 0
-}
-  function cleanDate(val: string): string {
+  function parseDate(val: string): string {
     if (!val) return ''
     const t = val.trim()
     if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t
@@ -118,87 +212,97 @@ function cleanNumber(val: string): number {
     return t
   }
 
-  function readFileAsText(f: File): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = e => resolve(e.target?.result as string)
-      reader.onerror = () => reject(new Error('Failed to read file'))
-      reader.readAsText(f)
-    })
+  function handleFile(f: File) {
+    setFile(f); setError('')
+    const reader = new FileReader()
+    reader.onload = e => {
+      const text = e.target?.result as string
+      const { headers, rows } = parseCSV(text)
+      if (!headers.length) { setError('Could not parse CSV.'); return }
+      setHeaders(headers); setPreview(rows.slice(0, 3)); setMapping(autoDetect(headers)); setCsvStep('map')
+    }
+    reader.readAsText(f)
   }
 
-  async function uploadData() {
-    if (!clientId) { setError('Please select a client.'); return }
-    if (!mapping.date) { setError('Please map the Date column.'); return }
-    if (!mapping.spend) { setError('Please map the Spend column.'); return }
-    if (selectedAccountId === 'new' && !newAccountName.trim()) { setError('Please enter a name for the new account.'); return }
-
-    setLoading(true)
-    setError('')
-
+  async function submitCSV() {
+    if (!mapping.date || !mapping.spend) { setError('Please map Date and Spend columns.'); return }
+    setLoading(true); setError('')
     try {
       let accountName = ''
-      if (selectedAccountId !== 'new') {
+      if (selectedAccountId && selectedAccountId !== 'new') {
         const acc = adAccounts.find(a => a.id === selectedAccountId)
-        accountName = acc?.account_name || 'Default'
+        accountName = acc?.account_name || 'Imported'
       } else {
-  accountName = newAccountName.trim()
-}
+        accountName = newAccountName.trim() || 'Imported'
+      }
 
-      const text = await readFileAsText(file!)
+      const reader = new FileReader()
+      const text = await new Promise<string>((res, rej) => {
+        reader.onload = e => res(e.target?.result as string)
+        reader.onerror = () => rej(new Error('Failed to read file'))
+        reader.readAsText(file!)
+      })
       const { rows } = parseCSV(text)
-
       const records = rows.map(row => ({
-        client_id: clientId,
-        platform,
-        account_name: accountName,
-        date: cleanDate(row[mapping.date] || ''),
-        spend: cleanNumber(row[mapping.spend] || '0'),
-        impressions: cleanNumber(row[mapping.impressions] || '0'),
-        clicks: cleanNumber(row[mapping.clicks] || '0'),
-        conversions: cleanNumber(row[mapping.conversions] || '0'),
-        leads: cleanNumber(row[mapping.leads] || '0'),
-        conversion_value: cleanNumber(row[mapping.conversion_value] || '0'),
+        client_id: clientId, platform, account_name: accountName,
+        date: parseDate(row[mapping.date] || ''),
+        spend: parseNumber(row[mapping.spend] || '0'),
+        impressions: parseNumber(row[mapping.impressions] || '0'),
+        clicks: parseNumber(row[mapping.clicks] || '0'),
+        conversions: parseNumber(row[mapping.conversions] || '0'),
+        leads: parseNumber(row[mapping.leads] || '0'),
+        conversion_value: parseNumber(row[mapping.conversion_value] || '0'),
       })).filter(r => r.date && r.date.length === 10)
 
-      if (!records.length) {
-        setError('No valid rows found. Check your date column.')
-        setLoading(false)
-        return
-      }
+      if (!records.length) { setError('No valid rows found.'); setLoading(false); return }
 
-      const batchSize = 100
-      for (let i = 0; i < records.length; i += batchSize) {
-        const { error: err } = await supabase
-          .from('metrics_cache')
-          .upsert(records.slice(i, i + batchSize), { onConflict: 'client_id,platform,date,account_name' })
+      for (let i = 0; i < records.length; i += 100) {
+        const { error: err } = await supabase.from('metrics_cache')
+          .upsert(records.slice(i, i + 100), { onConflict: 'client_id,platform,date,account_name' })
         if (err) throw new Error(err.message)
       }
-
-      setStep('done')
-    } catch (err: any) {
-      setError(err.message || 'Upload failed.')
+      setCsvStep('done')
+    } catch (e: any) {
+      setError(e.message)
     } finally {
       setLoading(false)
     }
   }
 
-  const googleTemplate = `Date,Campaign,Impressions,Clicks,Cost (EUR),Conversions,Conv. value (EUR)
-2024-01-15,Summer Sale,1200,45,38.50,3,150.00
-2024-01-16,Summer Sale,980,38,31.20,2,100.00`
+  const inputStyle = { fontSize: '13px', padding: '8px 10px', background: 'var(--surface3)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: '6px', outline: 'none', width: '100%', fontFamily: 'inherit' }
 
-  const metaTemplate = `Day,Campaign name,Impressions,Link clicks,Amount spent,Results,Purchase value
-2024-01-15,Brand Awareness,5400,120,45.00,8,320.00
-2024-01-16,Brand Awareness,4800,98,39.50,6,240.00`
-
-  function downloadTemplate() {
-    const csv = platform === 'google' ? googleTemplate : metaTemplate
-    const blob = new Blob([csv], { type: 'text/csv' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${platform}-template.csv`
-    a.click()
+  // Shared account picker used in both modes
+  function AccountPicker() {
+    return (
+      <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px' }}>
+        <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '12px' }}>Ad Account</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {filteredAccounts.map(a => (
+            <div key={a.id} onClick={() => { setSelectedAccountId(a.id); setNewAccountName('') }}
+              style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 14px', background: selectedAccountId === a.id ? 'rgba(0,200,224,0.08)' : 'var(--surface3)', border: `1px solid ${selectedAccountId === a.id ? 'var(--cyan)' : 'var(--border)'}`, borderRadius: '8px', cursor: 'pointer' }}>
+              <div style={{ width: '16px', height: '16px', borderRadius: '50%', border: `2px solid ${selectedAccountId === a.id ? 'var(--cyan)' : 'var(--text-muted)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                {selectedAccountId === a.id && <div style={{ width: '7px', height: '7px', borderRadius: '50%', background: 'var(--cyan)' }} />}
+              </div>
+              <span style={{ fontSize: '13px', fontWeight: 600 }}>{a.account_name}</span>
+            </div>
+          ))}
+          <div onClick={() => setSelectedAccountId('new')}
+            style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '10px 14px', background: selectedAccountId === 'new' ? 'rgba(0,200,224,0.08)' : 'var(--surface3)', border: `1px solid ${selectedAccountId === 'new' ? 'var(--cyan)' : 'var(--border)'}`, borderRadius: '8px', cursor: 'pointer' }}>
+            <div style={{ width: '16px', height: '16px', borderRadius: '50%', border: `2px solid ${selectedAccountId === 'new' ? 'var(--cyan)' : 'var(--text-muted)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: '2px' }}>
+              {selectedAccountId === 'new' && <div style={{ width: '7px', height: '7px', borderRadius: '50%', background: 'var(--cyan)' }} />}
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: '13px', fontWeight: 600, marginBottom: selectedAccountId === 'new' ? '8px' : '0' }}>＋ New account name</div>
+              {selectedAccountId === 'new' && (
+                <input type="text" placeholder='e.g. "Search Campaigns"' value={newAccountName}
+                  onChange={e => setNewAccountName(e.target.value)} onClick={e => e.stopPropagation()}
+                  autoFocus style={inputStyle} />
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -207,111 +311,98 @@ function cleanNumber(val: string): number {
       <div style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)', padding: '0 20px', height: '64px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
         <div>
           <div style={{ fontFamily: 'Syne, sans-serif', fontSize: '20px', fontWeight: 700 }}>Import Data</div>
-          <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Upload CSV exports from Google Ads or Meta Ads</div>
+          <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Add data manually or upload a CSV</div>
         </div>
-        <button onClick={downloadTemplate} style={{ padding: '8px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-mid)' }}>
-          ⬇ Template
-        </button>
+        {/* Mode toggle */}
+        <div style={{ display: 'flex', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden' }}>
+          {[['manual', '✏️ Manual'], ['csv', '📂 CSV Import']].map(([m, label]) => (
+            <button key={m} onClick={() => { setMode(m as any); setError(''); setSuccess('') }}
+              style={{ padding: '8px 16px', fontSize: '12px', fontWeight: 600, border: 'none', cursor: 'pointer', background: mode === m ? 'var(--cyan)' : 'transparent', color: mode === m ? '#080c0f' : 'var(--text-muted)' }}>
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '24px 20px' }}>
-        <div style={{ maxWidth: '680px', margin: '0 auto' }}>
+        <div style={{ maxWidth: '700px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
-          {/* Steps indicator */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '28px' }}>
-            {[['1', 'Setup'], ['2', 'Map Columns'], ['3', 'Done']].map(([num, label], i) => {
-              const active = step === ['upload', 'map', 'done'][i]
-              const done = (step === 'map' && i === 0) || (step === 'done' && i < 2)
-              return (
-                <div key={num} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <div style={{ width: '26px', height: '26px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: 700, background: done ? 'var(--green)' : active ? 'var(--cyan)' : 'var(--surface3)', color: done || active ? '#080c0f' : 'var(--text-muted)', border: active ? 'none' : '1px solid var(--border)', flexShrink: 0 }}>
-                      {done ? '✓' : num}
-                    </div>
-                    <span style={{ fontSize: '13px', fontWeight: active ? 600 : 400, color: active ? 'var(--text)' : 'var(--text-muted)' }}>{label}</span>
-                  </div>
-                  {i < 2 && <div style={{ width: '28px', height: '1px', background: 'var(--border)', flexShrink: 0 }} />}
-                </div>
-              )
-            })}
+          {/* Client + Platform — shown in both modes */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-mid)', marginBottom: '6px' }}>Client *</label>
+              <select value={clientId} onChange={e => handleClientChange(e.target.value)}>
+                {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-mid)', marginBottom: '6px' }}>Platform *</label>
+              <select value={platform} onChange={e => handlePlatformChange(e.target.value)}>
+                <option value="google">Google Ads</option>
+                <option value="meta">Meta Ads</option>
+              </select>
+            </div>
           </div>
 
-          {/* ── STEP 1: SETUP ── */}
-          {step === 'upload' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {/* Account picker */}
+          <AccountPicker />
 
-              {/* Client + Platform row */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-mid)', marginBottom: '6px' }}>Client *</label>
-                  <select value={clientId} onChange={e => { setClientId(e.target.value); setSelectedAccountId('new') }}>
-                    {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
+          {/* ── MANUAL MODE ── */}
+          {mode === 'manual' && (
+            <>
+              <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
+                <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ fontSize: '13px', fontWeight: 700 }}>Enter Daily Metrics</div>
+                  <button onClick={addRow} style={{ padding: '5px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', background: 'rgba(0,200,224,0.1)', border: '1px solid rgba(0,200,224,0.3)', color: 'var(--cyan)' }}>
+                    ＋ Add row
+                  </button>
                 </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-mid)', marginBottom: '6px' }}>Platform *</label>
-                  <select value={platform} onChange={e => { setPlatform(e.target.value as any); setSelectedAccountId('new') }}>
-                    <option value="google">Google Ads</option>
-                    <option value="meta">Meta Ads</option>
-                  </select>
-                </div>
-              </div>
 
-              {/* Account selector */}
-              <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px' }}>
-                <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '12px', color: 'var(--text)' }}>
-                  Which ad account is this data from?
+                {/* Header */}
+                <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr 1fr 1fr 1fr 32px', gap: '8px', padding: '10px 16px', borderBottom: '1px solid var(--border)', background: 'var(--surface3)' }}>
+                  {['Date', 'Spend (€)', 'Conv. Value (€)', 'Conversions', 'Leads', ''].map(h => (
+                    <div key={h} style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{h}</div>
+                  ))}
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
 
-                  {/* Existing accounts */}
-                  {filteredAccounts.map(a => (
-                    <div
-                      key={a.id}
-                      onClick={() => setSelectedAccountId(a.id)}
-                      style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 14px', background: selectedAccountId === a.id ? 'rgba(0,200,224,0.08)' : 'var(--surface3)', border: `1px solid ${selectedAccountId === a.id ? 'var(--cyan)' : 'var(--border)'}`, borderRadius: '8px', cursor: 'pointer', transition: 'all 0.15s' }}
-                    >
-                      <div style={{ width: '18px', height: '18px', borderRadius: '50%', border: `2px solid ${selectedAccountId === a.id ? 'var(--cyan)' : 'var(--text-muted)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                        {selectedAccountId === a.id && <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--cyan)' }} />}
-                      </div>
-                      <div>
-                        <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text)' }}>{a.account_name}</div>
-                        <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>{a.platform === 'google' ? 'Google Ads' : 'Meta Ads'}</div>
-                      </div>
+                {/* Rows */}
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  {manualRows.map((row, i) => (
+                    <div key={i} style={{ display: 'grid', gridTemplateColumns: '130px 1fr 1fr 1fr 1fr 32px', gap: '8px', padding: '10px 16px', borderBottom: i < manualRows.length - 1 ? '1px solid var(--border)' : 'none', alignItems: 'center' }}>
+                      <input type="date" value={row.date} onChange={e => updateRow(i, 'date', e.target.value)} style={{ ...inputStyle, padding: '7px 8px' }} />
+                      <input type="number" placeholder="0.00" step="0.01" value={row.spend} onChange={e => updateRow(i, 'spend', e.target.value)} style={inputStyle} />
+                      <input type="number" placeholder="0.00" step="0.01" value={row.conversion_value} onChange={e => updateRow(i, 'conversion_value', e.target.value)} style={inputStyle} />
+                      <input type="number" placeholder="0" value={row.conversions} onChange={e => updateRow(i, 'conversions', e.target.value)} style={inputStyle} />
+                      <input type="number" placeholder="0" value={row.leads} onChange={e => updateRow(i, 'leads', e.target.value)} style={inputStyle} />
+                      <button onClick={() => removeRow(i)} disabled={manualRows.length === 1}
+                        style={{ width: '28px', height: '28px', borderRadius: '6px', border: 'none', background: manualRows.length === 1 ? 'transparent' : 'rgba(255,77,106,0.1)', color: manualRows.length === 1 ? 'var(--border)' : 'var(--red)', cursor: manualRows.length === 1 ? 'default' : 'pointer', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        ×
+                      </button>
                     </div>
                   ))}
-
-                  {/* Create new account option */}
-                  <div
-                    onClick={() => setSelectedAccountId('new')}
-                    style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '12px 14px', background: selectedAccountId === 'new' ? 'rgba(0,200,224,0.08)' : 'var(--surface3)', border: `1px solid ${selectedAccountId === 'new' ? 'var(--cyan)' : 'var(--border)'}`, borderRadius: '8px', cursor: 'pointer', transition: 'all 0.15s' }}
-                  >
-                    <div style={{ width: '18px', height: '18px', borderRadius: '50%', border: `2px solid ${selectedAccountId === 'new' ? 'var(--cyan)' : 'var(--text-muted)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: '2px' }}>
-                      {selectedAccountId === 'new' && <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--cyan)' }} />}
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text)', marginBottom: selectedAccountId === 'new' ? '10px' : '0' }}>
-                        ＋ Create new account
-                      </div>
-                      {selectedAccountId === 'new' && (
-                        <input
-                          type="text"
-                          placeholder='e.g. "Search Campaigns" or "Retargeting"'
-                          value={newAccountName}
-                          onChange={e => setNewAccountName(e.target.value)}
-                          onClick={e => e.stopPropagation()}
-                          autoFocus
-                          style={{ fontSize: '13px' }}
-                        />
-                      )}
-                    </div>
-                  </div>
                 </div>
               </div>
 
-              {/* Drop zone — separate click handler, no interference */}
+              {error && <div style={{ background: 'rgba(255,77,106,0.1)', border: '1px solid rgba(255,77,106,0.3)', borderRadius: '8px', padding: '12px 16px', fontSize: '13px', color: 'var(--red)' }}>⚠ {error}</div>}
+              {success && <div style={{ background: 'rgba(0,224,158,0.1)', border: '1px solid rgba(0,224,158,0.3)', borderRadius: '8px', padding: '12px 16px', fontSize: '13px', color: 'var(--green)' }}>{success}</div>}
+
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                <button onClick={addRow} style={{ padding: '10px 18px', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-mid)' }}>
+                  ＋ Add row
+                </button>
+                <button onClick={submitManual} disabled={loading}
+                  style={{ padding: '10px 24px', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', background: loading ? 'var(--surface3)' : 'var(--cyan)', color: loading ? 'var(--text-muted)' : '#080c0f', border: 'none' }}>
+                  {loading ? '⏳ Saving...' : '💾 Save Data →'}
+                </button>
+              </div>
+            </>
+          )}
+
+          {/* ── CSV MODE ── */}
+          {mode === 'csv' && csvStep === 'setup' && (
+            <>
               <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px' }}>
-                <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '12px', color: 'var(--text)' }}>Upload CSV file</div>
+                <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '12px' }}>Upload CSV file</div>
                 <div
                   onDragOver={e => { e.preventDefault(); setDragging(true) }}
                   onDragLeave={() => setDragging(false)}
@@ -323,95 +414,72 @@ function cleanNumber(val: string): number {
                   <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '14px' }}>
                     {platform === 'google' ? 'Google Ads → Campaigns → Download → CSV' : 'Meta Ads Manager → Export → CSV'}
                   </div>
-                  <button
-                    onClick={() => fileRef.current?.click()}
-                    style={{ padding: '8px 20px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '13px', fontWeight: 600, cursor: 'pointer', background: 'var(--surface3)', color: 'var(--text-mid)' }}
-                  >
+                  <button onClick={() => fileRef.current?.click()}
+                    style={{ padding: '8px 20px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '13px', fontWeight: 600, cursor: 'pointer', background: 'var(--surface3)', color: 'var(--text-mid)' }}>
                     Browse file
                   </button>
                   <input ref={fileRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f) }} />
                 </div>
                 {file && (
                   <div style={{ marginTop: '10px', padding: '10px 14px', background: 'rgba(0,224,158,0.08)', border: '1px solid rgba(0,224,158,0.2)', borderRadius: '8px', fontSize: '13px', color: 'var(--green)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    ✓ {file.name} selected
+                    ✓ {file.name}
                   </div>
                 )}
               </div>
-
-              {/* How to export */}
-              <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px' }}>
-                <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '10px' }}>
-                  How to export from {platform === 'google' ? 'Google Ads' : 'Meta Ads'}
-                </div>
-                {platform === 'google' ? (
-                  <ol style={{ paddingLeft: '18px', display: 'flex', flexDirection: 'column', gap: '5px', fontSize: '13px', color: 'var(--text-mid)' }}>
-                    <li>Go to <strong style={{ color: 'var(--text)' }}>ads.google.com</strong> → your account</li>
-                    <li>Click <strong style={{ color: 'var(--text)' }}>Campaigns</strong> in the left menu</li>
-                    <li>Set your date range at the top right</li>
-                    <li>Click <strong style={{ color: 'var(--text)' }}>⬇ Download → CSV</strong></li>
-                  </ol>
-                ) : (
-                  <ol style={{ paddingLeft: '18px', display: 'flex', flexDirection: 'column', gap: '5px', fontSize: '13px', color: 'var(--text-mid)' }}>
-                    <li>Go to <strong style={{ color: 'var(--text)' }}>business.facebook.com</strong> → Ads Manager</li>
-                    <li>Select your date range</li>
-                    <li>Click <strong style={{ color: 'var(--text)' }}>Export → Export Table Data → CSV</strong></li>
-                  </ol>
-                )}
-              </div>
-            </div>
+              {error && <div style={{ background: 'rgba(255,77,106,0.1)', border: '1px solid rgba(255,77,106,0.3)', borderRadius: '8px', padding: '12px 16px', fontSize: '13px', color: 'var(--red)' }}>⚠ {error}</div>}
+            </>
           )}
 
-          {/* ── STEP 2: MAP COLUMNS ── */}
-          {step === 'map' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {mode === 'csv' && csvStep === 'map' && (
+            <>
               <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '20px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
-                  <div style={{ fontSize: '20px' }}>📄</div>
+                  <span style={{ fontSize: '20px' }}>📄</span>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 600, fontSize: '14px' }}>{file?.name}</div>
-                    <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{preview.length} preview rows · columns auto-detected below</div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Map columns below</div>
                   </div>
-                  <button onClick={() => setStep('upload')} style={{ padding: '6px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-muted)', flexShrink: 0 }}>
-                    ← Back
-                  </button>
+                  <button onClick={() => setCsvStep('setup')} style={{ padding: '6px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>← Back</button>
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {[...requiredFields, ...optionalFields].map(field => (
-                    <div key={field} style={{ display: 'grid', gridTemplateColumns: '160px 1fr', gap: '12px', alignItems: 'center' }}>
-                      <div style={{ fontSize: '13px', fontWeight: 600, color: requiredFields.includes(field) ? 'var(--text)' : 'var(--text-muted)' }}>
-                        {field.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                        {requiredFields.includes(field) && <span style={{ color: 'var(--cyan)', marginLeft: '4px' }}>*</span>}
-                      </div>
-                      <select value={mapping[field] || ''} onChange={e => setMapping(prev => ({ ...prev, [field]: e.target.value }))}>
-                        <option value="">— skip —</option>
-                        {headers.map(h => <option key={h} value={h}>{h}</option>)}
-                      </select>
+                {[
+                  { key: 'date', label: 'Date', required: true },
+                  { key: 'spend', label: 'Spend', required: true },
+                  { key: 'conversion_value', label: 'Conv. Value', required: false },
+                  { key: 'conversions', label: 'Conversions', required: false },
+                  { key: 'leads', label: 'Leads', required: false },
+                  { key: 'impressions', label: 'Impressions', required: false },
+                  { key: 'clicks', label: 'Clicks', required: false },
+                ].map(f => (
+                  <div key={f.key} style={{ display: 'grid', gridTemplateColumns: '160px 1fr', gap: '12px', alignItems: 'center', marginBottom: '10px' }}>
+                    <div style={{ fontSize: '13px', fontWeight: 600, color: f.required ? 'var(--text)' : 'var(--text-muted)' }}>
+                      {f.label}{f.required && <span style={{ color: 'var(--cyan)', marginLeft: '4px' }}>*</span>}
                     </div>
-                  ))}
-                </div>
+                    <select value={mapping[f.key] || ''} onChange={e => setMapping(prev => ({ ...prev, [f.key]: e.target.value }))}>
+                      <option value="">— skip —</option>
+                      {headers.map(h => <option key={h} value={h}>{h}</option>)}
+                    </select>
+                  </div>
+                ))}
               </div>
 
-              {/* Preview table */}
+              {/* Preview */}
               {preview.length > 0 && mapping.date && mapping.spend && (
-                <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 20px', overflowX: 'auto' }}>
+                <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', overflowX: 'auto' }}>
                   <div style={{ fontWeight: 700, marginBottom: '10px', fontSize: '13px' }}>Preview (first 3 rows)</div>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', minWidth: '500px' }}>
+                  <table style={{ borderCollapse: 'collapse', fontSize: '12px', minWidth: '100%' }}>
                     <thead>
-                      <tr>
-                        {['date', 'spend', 'impressions', 'clicks', 'conversions', 'conv. value'].map(f => (
-                          <th key={f} style={{ padding: '6px 10px', textAlign: 'left', color: 'var(--text-muted)', fontWeight: 600, borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>{f}</th>
-                        ))}
-                      </tr>
+                      <tr>{['date', 'spend', 'conv. value', 'conversions', 'leads'].map(h => (
+                        <th key={h} style={{ padding: '6px 12px', textAlign: 'left', color: 'var(--text-muted)', fontWeight: 600, borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>{h}</th>
+                      ))}</tr>
                     </thead>
                     <tbody>
                       {preview.map((row, i) => (
                         <tr key={i}>
-                          <td style={{ padding: '7px 10px', borderBottom: '1px solid var(--border)' }}>{cleanDate(row[mapping.date] || '')}</td>
-                          <td style={{ padding: '7px 10px', borderBottom: '1px solid var(--border)' }}>€{cleanNumber(row[mapping.spend] || '0').toFixed(2)}</td>
-                          <td style={{ padding: '7px 10px', borderBottom: '1px solid var(--border)' }}>{cleanNumber(row[mapping.impressions] || '0')}</td>
-                          <td style={{ padding: '7px 10px', borderBottom: '1px solid var(--border)' }}>{cleanNumber(row[mapping.clicks] || '0')}</td>
-                          <td style={{ padding: '7px 10px', borderBottom: '1px solid var(--border)' }}>{cleanNumber(row[mapping.conversions] || '0')}</td>
-                          <td style={{ padding: '7px 10px', borderBottom: '1px solid var(--border)' }}>€{cleanNumber(row[mapping.conversion_value] || '0').toFixed(2)}</td>
+                          <td style={{ padding: '7px 12px', borderBottom: '1px solid var(--border)' }}>{row[mapping.date]}</td>
+                          <td style={{ padding: '7px 12px', borderBottom: '1px solid var(--border)', color: 'var(--cyan)' }}>€{parseNumber(row[mapping.spend] || '0').toFixed(2)}</td>
+                          <td style={{ padding: '7px 12px', borderBottom: '1px solid var(--border)' }}>€{parseNumber(row[mapping.conversion_value] || '0').toFixed(2)}</td>
+                          <td style={{ padding: '7px 12px', borderBottom: '1px solid var(--border)' }}>{parseNumber(row[mapping.conversions] || '0')}</td>
+                          <td style={{ padding: '7px 12px', borderBottom: '1px solid var(--border)' }}>{parseNumber(row[mapping.leads] || '0')}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -419,44 +487,30 @@ function cleanNumber(val: string): number {
                 </div>
               )}
 
-              {error && (
-                <div style={{ background: 'rgba(255,77,106,0.1)', border: '1px solid rgba(255,77,106,0.3)', borderRadius: '8px', padding: '12px 16px', fontSize: '13px', color: 'var(--red)' }}>
-                  ⚠ {error}
-                </div>
-              )}
+              {error && <div style={{ background: 'rgba(255,77,106,0.1)', border: '1px solid rgba(255,77,106,0.3)', borderRadius: '8px', padding: '12px 16px', fontSize: '13px', color: 'var(--red)' }}>⚠ {error}</div>}
 
               <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                <button onClick={() => setStep('upload')} style={{ padding: '10px 20px', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-mid)' }}>
-                  ← Back
-                </button>
-                <button
-                  onClick={uploadData}
-                  disabled={loading || !mapping.date || !mapping.spend}
-                  style={{ padding: '10px 24px', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer', background: loading ? 'var(--surface3)' : 'var(--cyan)', color: loading ? 'var(--text-muted)' : '#080c0f', border: 'none' }}
-                >
+                <button onClick={() => setCsvStep('setup')} style={{ padding: '10px 20px', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-mid)' }}>← Back</button>
+                <button onClick={submitCSV} disabled={loading || !mapping.date || !mapping.spend}
+                  style={{ padding: '10px 24px', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', background: loading ? 'var(--surface3)' : 'var(--cyan)', color: loading ? 'var(--text-muted)' : '#080c0f', border: 'none' }}>
                   {loading ? '⏳ Importing...' : '⬆ Import Data →'}
                 </button>
               </div>
-            </div>
+            </>
           )}
 
-          {/* ── STEP 3: DONE ── */}
-          {step === 'done' && (
+          {mode === 'csv' && csvStep === 'done' && (
             <div style={{ textAlign: 'center', padding: '60px 40px', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '16px' }}>
               <div style={{ fontSize: '56px', marginBottom: '16px' }}>✅</div>
-              <div style={{ fontFamily: 'Syne, sans-serif', fontSize: '24px', fontWeight: 800, marginBottom: '8px' }}>Data imported!</div>
-              <div style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '32px' }}>Your data is now live in the dashboard.</div>
+              <div style={{ fontFamily: 'Syne, sans-serif', fontSize: '24px', fontWeight: 800, marginBottom: '8px' }}>Imported!</div>
+              <div style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '32px' }}>Data is now live in the dashboard.</div>
               <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
-                <button
-                  onClick={() => { setStep('upload'); setFile(null); setPreview([]); setMapping({}); setNewAccountName('') }}
-                  style={{ padding: '10px 20px', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-mid)' }}
-                >
-                  ⬆ Import another
+                <button onClick={() => { setCsvStep('setup'); setFile(null); setPreview([]); setMapping({}) }}
+                  style={{ padding: '10px 20px', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-mid)' }}>
+                  Import another
                 </button>
-                <button
-                  onClick={() => window.location.href = `/dashboard?client=${clientId}`}
-                  style={{ padding: '10px 24px', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', background: 'var(--cyan)', color: '#080c0f', border: 'none' }}
-                >
+                <button onClick={() => window.location.href = `/dashboard?client=${clientId}`}
+                  style={{ padding: '10px 24px', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', background: 'var(--cyan)', color: '#080c0f', border: 'none' }}>
                   View Dashboard →
                 </button>
               </div>
