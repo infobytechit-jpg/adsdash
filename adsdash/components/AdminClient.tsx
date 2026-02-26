@@ -101,26 +101,68 @@ export default function AdminClient({ clients, reports, adAccounts: initialAccou
 
   async function renameAccount(id: string) {
     if (!editingName.trim()) return
-    const { error } = await supabase.from('ad_accounts').update({ account_name: editingName }).eq('id', id)
-    if (!error) {
-      setAccounts(prev => prev.map(a => a.id === id ? { ...a, account_name: editingName } : a))
-      setEditingId(null)
-    } else { alert(error.message) }
+    const account = accounts.find(a => a.id === id)
+    if (!account) return
+
+    if (account.from_metrics) {
+      // Rename in metrics_cache only
+      await supabase.from('metrics_cache')
+        .update({ account_name: editingName })
+        .eq('client_id', account.client_id)
+        .eq('platform', account.platform)
+        .eq('account_name', account.account_name)
+    } else {
+      const { error } = await supabase.from('ad_accounts').update({ account_name: editingName }).eq('id', id)
+      if (error) { alert(error.message); return }
+      // Also update metrics_cache to keep in sync
+      await supabase.from('metrics_cache')
+        .update({ account_name: editingName })
+        .eq('client_id', account.client_id)
+        .eq('platform', account.platform)
+        .eq('account_name', account.account_name)
+    }
+    setAccounts(prev => prev.map(a => a.id === id ? { ...a, account_name: editingName } : a))
+    setEditingId(null)
   }
 
   async function reassignClient(id: string, newClientId: string) {
-    await supabase.from('ad_accounts').update({ client_id: newClientId }).eq('id', id)
+    const account = accounts.find(a => a.id === id)
+    if (!account) return
+    if (!account.from_metrics) {
+      await supabase.from('ad_accounts').update({ client_id: newClientId }).eq('id', id)
+    }
+    await supabase.from('metrics_cache')
+      .update({ client_id: newClientId })
+      .eq('client_id', account.client_id)
+      .eq('platform', account.platform)
+      .eq('account_name', account.account_name)
     setAccounts(prev => prev.map(a => a.id === id ? { ...a, client_id: newClientId } : a))
   }
 
   async function toggleActive(id: string, current: boolean) {
+    const account = accounts.find(a => a.id === id)
+    if (!account || account.from_metrics) return // metrics-only accounts can't be paused via DB
     await supabase.from('ad_accounts').update({ is_active: !current }).eq('id', id)
     setAccounts(prev => prev.map(a => a.id === id ? { ...a, is_active: !current } : a))
   }
 
   async function removeAccount(id: string) {
-    if (!confirm('Delete this account? Metric data stays but the account entry is removed.')) return
-    await supabase.from('ad_accounts').delete().eq('id', id)
+    const account = accounts.find(a => a.id === id)
+    if (!account) return
+    const msg = account.from_metrics
+      ? 'Delete this account AND all its metric data? This cannot be undone.'
+      : 'Delete this account? Metric data will also be removed.'
+    if (!confirm(msg)) return
+    // Delete metric data
+    await supabase.from('metrics_cache')
+      .delete()
+      .eq('client_id', account.client_id)
+      .eq('platform', account.platform)
+      .eq('account_name', account.account_name)
+    // Delete from ad_accounts if it exists there
+    if (!account.from_metrics) {
+      await supabase.from('ad_accounts').delete().eq('id', id)
+    }
     setAccounts(prev => prev.filter(a => a.id !== id))
   }
 
@@ -256,7 +298,10 @@ export default function AdminClient({ clients, reports, adAccounts: initialAccou
                                   style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '13px', padding: '2px 4px' }}>✏️</button>
                               </div>
                             )}
-                            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{a.platform === 'google' ? 'Google Ads' : 'Meta Ads'}</div>
+                            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                              {a.platform === 'google' ? 'Google Ads' : 'Meta Ads'}
+                              {a.from_metrics && <span style={{ marginLeft: '6px', padding: '1px 6px', borderRadius: '4px', background: 'rgba(255,197,61,0.15)', color: 'var(--yellow)', fontSize: '10px', fontWeight: 600 }}>manual</span>}
+                            </div>
                           </div>
                           <select value={a.client_id} onChange={e => reassignClient(a.id, e.target.value)}
                             style={{ fontSize: '12px', padding: '5px 8px', width: 'auto', maxWidth: '130px' }}>
