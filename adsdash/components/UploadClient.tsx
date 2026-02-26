@@ -27,7 +27,6 @@ export default function UploadClient({ clients, adAccounts }: Props) {
   const requiredFields = ['date', 'spend', 'impressions', 'clicks', 'conversions']
   const optionalFields = ['leads', 'conversion_value', 'cpc', 'ctr']
 
-  // Filter accounts by selected client + platform
   const filteredAccounts = adAccounts.filter(a => a.client_id === clientId && a.platform === platform)
 
   function autoDetect(cols: string[]): Record<string, string> {
@@ -79,13 +78,17 @@ export default function UploadClient({ clients, adAccounts }: Props) {
   }
 
   function handleFile(f: File) {
-    setFile(f); setError('')
+    setFile(f)
+    setError('')
     const reader = new FileReader()
     reader.onload = e => {
       const text = e.target?.result as string
       const { headers, rows } = parseCSV(text)
       if (!headers.length) { setError('Could not parse CSV.'); return }
-      setHeaders(headers); setPreview(rows.slice(0, 3)); setMapping(autoDetect(headers)); setStep('map')
+      setHeaders(headers)
+      setPreview(rows.slice(0, 3))
+      setMapping(autoDetect(headers))
+      setStep('map')
     }
     reader.readAsText(f)
   }
@@ -100,7 +103,7 @@ export default function UploadClient({ clients, adAccounts }: Props) {
     const t = val.trim()
     if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t
     if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(t)) {
-      const p = t.split('/');
+      const p = t.split('/')
       return `${p[2]}-${p[1].padStart(2, '0')}-${p[0].padStart(2, '0')}`
     }
     const d = new Date(t)
@@ -123,16 +126,16 @@ export default function UploadClient({ clients, adAccounts }: Props) {
     if (!mapping.spend) { setError('Please map the Spend column.'); return }
     if (selectedAccountId === 'new' && !newAccountName.trim()) { setError('Please enter a name for the new account.'); return }
 
-    setLoading(true); setError('')
+    setLoading(true)
+    setError('')
 
     try {
-      // Create new account if needed
-      let accountName = newAccountName.trim()
+      let accountName = ''
       if (selectedAccountId !== 'new') {
         const acc = adAccounts.find(a => a.id === selectedAccountId)
         accountName = acc?.account_name || 'Default'
       } else {
-        // Create the ad_account record
+        accountName = newAccountName.trim()
         const { error: accErr } = await supabase.from('ad_accounts').insert({
           client_id: clientId,
           platform,
@@ -159,7 +162,11 @@ export default function UploadClient({ clients, adAccounts }: Props) {
         conversion_value: cleanNumber(row[mapping.conversion_value] || '0'),
       })).filter(r => r.date && r.date.length === 10)
 
-      if (!records.length) { setError('No valid rows found. Check your date column.'); setLoading(false); return }
+      if (!records.length) {
+        setError('No valid rows found. Check your date column.')
+        setLoading(false)
+        return
+      }
 
       const batchSize = 100
       for (let i = 0; i < records.length; i += batchSize) {
@@ -189,11 +196,15 @@ export default function UploadClient({ clients, adAccounts }: Props) {
     const csv = platform === 'google' ? googleTemplate : metaTemplate
     const blob = new Blob([csv], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)
-    const a = document.createElement('a'); a.href = url; a.download = `${platform}-template.csv`; a.click()
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${platform}-template.csv`
+    a.click()
   }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+      {/* Topbar */}
       <div style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)', padding: '0 20px', height: '64px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
         <div>
           <div style={{ fontFamily: 'Syne, sans-serif', fontSize: '20px', fontWeight: 700 }}>Import Data</div>
@@ -205,31 +216,33 @@ export default function UploadClient({ clients, adAccounts }: Props) {
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '24px 20px' }}>
-        <div style={{ maxWidth: '720px', margin: '0 auto' }}>
+        <div style={{ maxWidth: '680px', margin: '0 auto' }}>
 
-          {/* Steps */}
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '28px', alignItems: 'center' }}>
+          {/* Steps indicator */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '28px' }}>
             {[['1', 'Setup'], ['2', 'Map Columns'], ['3', 'Done']].map(([num, label], i) => {
               const active = step === ['upload', 'map', 'done'][i]
               const done = (step === 'map' && i === 0) || (step === 'done' && i < 2)
               return (
                 <div key={num} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <div style={{ width: '28px', height: '28px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 700, background: done ? 'var(--green)' : active ? 'var(--cyan)' : 'var(--surface3)', color: done || active ? '#080c0f' : 'var(--text-muted)', border: active ? 'none' : '1px solid var(--border)' }}>
+                    <div style={{ width: '26px', height: '26px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: 700, background: done ? 'var(--green)' : active ? 'var(--cyan)' : 'var(--surface3)', color: done || active ? '#080c0f' : 'var(--text-muted)', border: active ? 'none' : '1px solid var(--border)', flexShrink: 0 }}>
                       {done ? '✓' : num}
                     </div>
                     <span style={{ fontSize: '13px', fontWeight: active ? 600 : 400, color: active ? 'var(--text)' : 'var(--text-muted)' }}>{label}</span>
                   </div>
-                  {i < 2 && <div style={{ width: '32px', height: '1px', background: 'var(--border)' }} />}
+                  {i < 2 && <div style={{ width: '28px', height: '1px', background: 'var(--border)', flexShrink: 0 }} />}
                 </div>
               )
             })}
           </div>
 
+          {/* ── STEP 1: SETUP ── */}
           {step === 'upload' && (
-            <>
-              {/* Client + Platform */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+              {/* Client + Platform row */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-mid)', marginBottom: '6px' }}>Client *</label>
                   <select value={clientId} onChange={e => { setClientId(e.target.value); setSelectedAccountId('new') }}>
@@ -246,57 +259,91 @@ export default function UploadClient({ clients, adAccounts }: Props) {
               </div>
 
               {/* Account selector */}
-              <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 20px', marginBottom: '16px' }}>
-                <div style={{ fontSize: '13px', fontWeight: 600, marginBottom: '12px' }}>Which ad account is this data from?</div>
+              <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px' }}>
+                <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '12px', color: 'var(--text)' }}>
+                  Which ad account is this data from?
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
 
-                {filteredAccounts.length > 0 && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
-                    {filteredAccounts.map(a => (
-                      <label key={a.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', background: selectedAccountId === a.id ? 'rgba(0,200,224,0.08)' : 'var(--surface3)', border: `1px solid ${selectedAccountId === a.id ? 'var(--cyan)' : 'var(--border)'}`, borderRadius: '8px', cursor: 'pointer' }}>
-                        <input type="radio" name="account" value={a.id} checked={selectedAccountId === a.id} onChange={() => setSelectedAccountId(a.id)} style={{ accentColor: 'var(--cyan)' }} />
-                        <div>
-                          <div style={{ fontSize: '13px', fontWeight: 600 }}>{a.account_name}</div>
-                          <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{a.platform === 'google' ? 'Google Ads' : 'Meta Ads'}</div>
-                        </div>
-                      </label>
-                    ))}
+                  {/* Existing accounts */}
+                  {filteredAccounts.map(a => (
+                    <div
+                      key={a.id}
+                      onClick={() => setSelectedAccountId(a.id)}
+                      style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 14px', background: selectedAccountId === a.id ? 'rgba(0,200,224,0.08)' : 'var(--surface3)', border: `1px solid ${selectedAccountId === a.id ? 'var(--cyan)' : 'var(--border)'}`, borderRadius: '8px', cursor: 'pointer', transition: 'all 0.15s' }}
+                    >
+                      <div style={{ width: '18px', height: '18px', borderRadius: '50%', border: `2px solid ${selectedAccountId === a.id ? 'var(--cyan)' : 'var(--text-muted)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        {selectedAccountId === a.id && <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--cyan)' }} />}
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text)' }}>{a.account_name}</div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>{a.platform === 'google' ? 'Google Ads' : 'Meta Ads'}</div>
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* Create new account option */}
+                  <div
+                    onClick={() => setSelectedAccountId('new')}
+                    style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '12px 14px', background: selectedAccountId === 'new' ? 'rgba(0,200,224,0.08)' : 'var(--surface3)', border: `1px solid ${selectedAccountId === 'new' ? 'var(--cyan)' : 'var(--border)'}`, borderRadius: '8px', cursor: 'pointer', transition: 'all 0.15s' }}
+                  >
+                    <div style={{ width: '18px', height: '18px', borderRadius: '50%', border: `2px solid ${selectedAccountId === 'new' ? 'var(--cyan)' : 'var(--text-muted)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: '2px' }}>
+                      {selectedAccountId === 'new' && <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--cyan)' }} />}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text)', marginBottom: selectedAccountId === 'new' ? '10px' : '0' }}>
+                        ＋ Create new account
+                      </div>
+                      {selectedAccountId === 'new' && (
+                        <input
+                          type="text"
+                          placeholder='e.g. "Search Campaigns" or "Retargeting"'
+                          value={newAccountName}
+                          onChange={e => setNewAccountName(e.target.value)}
+                          onClick={e => e.stopPropagation()}
+                          autoFocus
+                          style={{ fontSize: '13px' }}
+                        />
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Drop zone — separate click handler, no interference */}
+              <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px' }}>
+                <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '12px', color: 'var(--text)' }}>Upload CSV file</div>
+                <div
+                  onDragOver={e => { e.preventDefault(); setDragging(true) }}
+                  onDragLeave={() => setDragging(false)}
+                  onDrop={e => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f) }}
+                  style={{ border: `2px dashed ${dragging ? 'var(--cyan)' : 'var(--border)'}`, borderRadius: '10px', padding: '28px 20px', textAlign: 'center', background: dragging ? 'rgba(0,200,224,0.05)' : 'transparent', transition: 'all 0.2s' }}
+                >
+                  <div style={{ fontSize: '32px', marginBottom: '8px' }}>📂</div>
+                  <div style={{ fontSize: '14px', fontWeight: 600, marginBottom: '4px' }}>Drop your CSV here</div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '14px' }}>
+                    {platform === 'google' ? 'Google Ads → Campaigns → Download → CSV' : 'Meta Ads Manager → Export → CSV'}
+                  </div>
+                  <button
+                    onClick={() => fileRef.current?.click()}
+                    style={{ padding: '8px 20px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '13px', fontWeight: 600, cursor: 'pointer', background: 'var(--surface3)', color: 'var(--text-mid)' }}
+                  >
+                    Browse file
+                  </button>
+                  <input ref={fileRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f) }} />
+                </div>
+                {file && (
+                  <div style={{ marginTop: '10px', padding: '10px 14px', background: 'rgba(0,224,158,0.08)', border: '1px solid rgba(0,224,158,0.2)', borderRadius: '8px', fontSize: '13px', color: 'var(--green)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    ✓ {file.name} selected
                   </div>
                 )}
-
-                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', background: selectedAccountId === 'new' ? 'rgba(0,200,224,0.08)' : 'var(--surface3)', border: `1px solid ${selectedAccountId === 'new' ? 'var(--cyan)' : 'var(--border)'}`, borderRadius: '8px', cursor: 'pointer' }}>
-                  <input type="radio" name="account" value="new" checked={selectedAccountId === 'new'} onChange={() => setSelectedAccountId('new')} style={{ accentColor: 'var(--cyan)' }} />
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: '13px', fontWeight: 600 }}>＋ Create new account</div>
-                    {selectedAccountId === 'new' && (
-                      <input type="text" placeholder='Name this account e.g. "Search Campaigns"'
-                        value={newAccountName} onChange={e => setNewAccountName(e.target.value)}
-                        onClick={e => e.stopPropagation()}
-                        style={{ marginTop: '8px', fontSize: '13px' }} />
-                    )}
-                  </div>
-                </label>
               </div>
 
-              {/* Drop zone */}
-              <div
-                onDragOver={e => { e.preventDefault(); setDragging(true) }}
-                onDragLeave={() => setDragging(false)}
-                onDrop={e => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f) }}
-                onClick={() => fileRef.current?.click()}
-                style={{ border: `2px dashed ${dragging ? 'var(--cyan)' : 'var(--border)'}`, borderRadius: '16px', padding: '40px 20px', textAlign: 'center', cursor: 'pointer', background: dragging ? 'rgba(0,200,224,0.05)' : 'var(--surface2)', transition: 'all 0.2s', marginBottom: '16px' }}
-              >
-                <div style={{ fontSize: '36px', marginBottom: '10px' }}>📂</div>
-                <div style={{ fontFamily: 'Syne, sans-serif', fontSize: '15px', fontWeight: 700, marginBottom: '6px' }}>Drop your CSV here</div>
-                <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '12px' }}>
-                  Export from {platform === 'google' ? 'Google Ads → Reports → Download' : 'Meta Ads Manager → Export'}
+              {/* How to export */}
+              <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px' }}>
+                <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '10px' }}>
+                  How to export from {platform === 'google' ? 'Google Ads' : 'Meta Ads'}
                 </div>
-                <div style={{ display: 'inline-block', padding: '7px 16px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '13px', color: 'var(--text-mid)' }}>Browse file</div>
-                <input ref={fileRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f) }} />
-              </div>
-
-              {/* Instructions */}
-              <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 20px' }}>
-                <div style={{ fontWeight: 700, marginBottom: '10px', fontSize: '13px' }}>How to export from {platform === 'google' ? 'Google Ads' : 'Meta Ads'}</div>
                 {platform === 'google' ? (
                   <ol style={{ paddingLeft: '18px', display: 'flex', flexDirection: 'column', gap: '5px', fontSize: '13px', color: 'var(--text-mid)' }}>
                     <li>Go to <strong style={{ color: 'var(--text)' }}>ads.google.com</strong> → your account</li>
@@ -312,21 +359,23 @@ export default function UploadClient({ clients, adAccounts }: Props) {
                   </ol>
                 )}
               </div>
-            </>
+            </div>
           )}
 
+          {/* ── STEP 2: MAP COLUMNS ── */}
           {step === 'map' && (
-            <>
-              <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '20px', marginBottom: '20px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '20px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
                   <div style={{ fontSize: '20px' }}>📄</div>
-                  <div>
-                    <div style={{ fontWeight: 600 }}>{file?.name}</div>
-                    <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{preview.length} preview rows · auto-detected columns below</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 600, fontSize: '14px' }}>{file?.name}</div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{preview.length} preview rows · columns auto-detected below</div>
                   </div>
-                  <button onClick={() => setStep('upload')} style={{ marginLeft: 'auto', padding: '6px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>← Back</button>
+                  <button onClick={() => setStep('upload')} style={{ padding: '6px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-muted)', flexShrink: 0 }}>
+                    ← Back
+                  </button>
                 </div>
-
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   {[...requiredFields, ...optionalFields].map(field => (
                     <div key={field} style={{ display: 'grid', gridTemplateColumns: '160px 1fr', gap: '12px', alignItems: 'center' }}>
@@ -343,15 +392,17 @@ export default function UploadClient({ clients, adAccounts }: Props) {
                 </div>
               </div>
 
-              {/* Preview */}
+              {/* Preview table */}
               {preview.length > 0 && mapping.date && mapping.spend && (
-                <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 20px', marginBottom: '20px', overflowX: 'auto' }}>
-                  <div style={{ fontWeight: 700, marginBottom: '10px', fontSize: '13px' }}>Preview</div>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 20px', overflowX: 'auto' }}>
+                  <div style={{ fontWeight: 700, marginBottom: '10px', fontSize: '13px' }}>Preview (first 3 rows)</div>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', minWidth: '500px' }}>
                     <thead>
-                      <tr>{['date', 'spend', 'impressions', 'clicks', 'conversions', 'conv. value'].map(f => (
-                        <th key={f} style={{ padding: '6px 10px', textAlign: 'left', color: 'var(--text-muted)', fontWeight: 600, borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>{f}</th>
-                      ))}</tr>
+                      <tr>
+                        {['date', 'spend', 'impressions', 'clicks', 'conversions', 'conv. value'].map(f => (
+                          <th key={f} style={{ padding: '6px 10px', textAlign: 'left', color: 'var(--text-muted)', fontWeight: 600, borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>{f}</th>
+                        ))}
+                      </tr>
                     </thead>
                     <tbody>
                       {preview.map((row, i) => (
@@ -370,33 +421,49 @@ export default function UploadClient({ clients, adAccounts }: Props) {
               )}
 
               {error && (
-                <div style={{ background: 'rgba(255,77,106,0.1)', border: '1px solid rgba(255,77,106,0.3)', borderRadius: '8px', padding: '12px 16px', fontSize: '13px', color: 'var(--red)', marginBottom: '16px' }}>⚠ {error}</div>
+                <div style={{ background: 'rgba(255,77,106,0.1)', border: '1px solid rgba(255,77,106,0.3)', borderRadius: '8px', padding: '12px 16px', fontSize: '13px', color: 'var(--red)' }}>
+                  ⚠ {error}
+                </div>
               )}
 
               <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                <button onClick={() => setStep('upload')} style={{ padding: '10px 20px', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-mid)' }}>← Back</button>
-                <button onClick={uploadData} disabled={loading || !mapping.date || !mapping.spend} style={{ padding: '10px 24px', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', background: loading ? 'var(--surface3)' : 'var(--cyan)', color: loading ? 'var(--text-muted)' : '#080c0f', border: 'none' }}>
+                <button onClick={() => setStep('upload')} style={{ padding: '10px 20px', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-mid)' }}>
+                  ← Back
+                </button>
+                <button
+                  onClick={uploadData}
+                  disabled={loading || !mapping.date || !mapping.spend}
+                  style={{ padding: '10px 24px', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer', background: loading ? 'var(--surface3)' : 'var(--cyan)', color: loading ? 'var(--text-muted)' : '#080c0f', border: 'none' }}
+                >
                   {loading ? '⏳ Importing...' : '⬆ Import Data →'}
                 </button>
               </div>
-            </>
+            </div>
           )}
 
+          {/* ── STEP 3: DONE ── */}
           {step === 'done' && (
             <div style={{ textAlign: 'center', padding: '60px 40px', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '16px' }}>
               <div style={{ fontSize: '56px', marginBottom: '16px' }}>✅</div>
               <div style={{ fontFamily: 'Syne, sans-serif', fontSize: '24px', fontWeight: 800, marginBottom: '8px' }}>Data imported!</div>
               <div style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '32px' }}>Your data is now live in the dashboard.</div>
               <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
-                <button onClick={() => { setStep('upload'); setFile(null); setPreview([]); setMapping({}) }} style={{ padding: '10px 20px', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-mid)' }}>
+                <button
+                  onClick={() => { setStep('upload'); setFile(null); setPreview([]); setMapping({}); setNewAccountName('') }}
+                  style={{ padding: '10px 20px', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-mid)' }}
+                >
                   ⬆ Import another
                 </button>
-                <button onClick={() => window.location.href = `/dashboard?client=${clientId}`} style={{ padding: '10px 24px', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', background: 'var(--cyan)', color: '#080c0f', border: 'none' }}>
+                <button
+                  onClick={() => window.location.href = `/dashboard?client=${clientId}`}
+                  style={{ padding: '10px 24px', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', background: 'var(--cyan)', color: '#080c0f', border: 'none' }}
+                >
                   View Dashboard →
                 </button>
               </div>
             </div>
           )}
+
         </div>
       </div>
     </div>
