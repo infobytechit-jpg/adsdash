@@ -24,6 +24,7 @@ const COLORS = ['#00C8E0', '#a855f7', '#ffc53d', '#00e09e']
 
 const ALL_METRICS = [
   { key: 'spend', label: '💰 Total Spend', accent: '#00C8E0' },
+  { key: 'conversion_value', label: '💎 Conv. Value', accent: '#00C8E0' },
   { key: 'conversions', label: '✅ Conversions', accent: '#00e09e' },
   { key: 'roas', label: '📈 ROAS', accent: '#ffc53d' },
   { key: 'leads', label: '🎯 Leads', accent: '#a855f7' },
@@ -41,6 +42,7 @@ export default function DashboardClient({ profile, clientData, metrics, campaign
   // Metric visibility state — admin starts with their own prefs, clients use clientData settings
   const defaultVisible = {
     spend: clientData?.show_spend ?? true,
+    conversion_value: clientData?.show_conversion_value ?? true,
     conversions: clientData?.show_conversions ?? true,
     roas: clientData?.show_roas ?? true,
     leads: clientData?.show_leads ?? true,
@@ -65,6 +67,7 @@ export default function DashboardClient({ profile, clientData, metrics, campaign
     setSavingMetrics(true)
     await supabase.from('clients').update({
       show_spend: visibleMetrics.spend,
+      show_conversion_value: visibleMetrics.conversion_value,
       show_conversions: visibleMetrics.conversions,
       show_roas: visibleMetrics.roas,
       show_leads: visibleMetrics.leads,
@@ -75,6 +78,7 @@ export default function DashboardClient({ profile, clientData, metrics, campaign
     }).eq('id', clientData.id)
     setSavingMetrics(false)
     setShowMetricPicker(false)
+    router.refresh()
   }
 
   const totals = useMemo(() => {
@@ -156,6 +160,7 @@ export default function DashboardClient({ profile, clientData, metrics, campaign
 
   const kpiValues: Record<string, { value: string; sub: string }> = {
     spend: { value: fmtEur(totals.spend), sub: `G: ${fmtEur(gSpend)} · M: ${fmtEur(mSpend)}` },
+    conversion_value: { value: fmtEur(totals.conversion_value), sub: 'Total revenue from ads' },
     conversions: { value: fmt(totals.conversions), sub: `G: ${fmt(gConv)} · M: ${fmt(mConv)}` },
     roas: { value: `${roas}x`, sub: 'Return on ad spend' },
     leads: { value: fmt(totals.leads), sub: 'Form fills & calls' },

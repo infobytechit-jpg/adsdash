@@ -21,14 +21,15 @@ export default function AdminClient({ clients, reports, adAccounts: initialAccou
   const [newClient, setNewClient] = useState({ name: '', email: '', password: '', color: '#00C8E0' })
   const [accountForm, setAccountForm] = useState({ client_id: '', platform: 'google', account_name: '', account_id: '' })
   const [metrics, setMetrics] = useState({
-    show_spend: true, show_conversions: true, show_roas: true, show_leads: true,
+    show_spend: true, show_conversion_value: true, show_conversions: true, show_roas: true, show_leads: true,
     show_clicks: false, show_impressions: false, show_cpc: false, show_ctr: false,
   })
 
   function openCustomize(client: any) {
     setSelectedClient(client)
     setMetrics({
-      show_spend: client.show_spend ?? true, show_conversions: client.show_conversions ?? true,
+      show_spend: client.show_spend ?? true, show_conversion_value: client.show_conversion_value ?? true,
+      show_conversions: client.show_conversions ?? true,
       show_roas: client.show_roas ?? true, show_leads: client.show_leads ?? true,
       show_clicks: client.show_clicks ?? false, show_impressions: client.show_impressions ?? false,
       show_cpc: client.show_cpc ?? false, show_ctr: client.show_ctr ?? false,
@@ -164,11 +165,13 @@ export default function AdminClient({ clients, reports, adAccounts: initialAccou
       await supabase.from('ad_accounts').delete().eq('id', id)
     }
     setAccounts(prev => prev.filter(a => a.id !== id))
+    router.refresh()
   }
 
   const COLORS_OPTIONS = ['#00C8E0', '#a855f7', '#f97316', '#00e09e', '#ffc53d', '#ff4d6a', '#4285F4']
   const metricItems = [
     { key: 'show_spend', label: 'Total Spend', sub: 'Combined ad spend' },
+    { key: 'show_conversion_value', label: 'Conv. Value', sub: 'Total revenue from conversions' },
     { key: 'show_conversions', label: 'Conversions', sub: 'Total conversions tracked' },
     { key: 'show_roas', label: 'ROAS', sub: 'Return on ad spend' },
     { key: 'show_leads', label: 'Leads', sub: 'Form fills and lead events' },
