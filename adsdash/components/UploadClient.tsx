@@ -40,6 +40,13 @@ export default function UploadClient({ clients, adAccounts: initialAccounts }: P
 
   const filteredAccounts = adAccounts.filter(a => a.client_id === clientId && a.platform === platform)
 
+  // Also track locally created accounts during this session
+  const [localAccounts, setLocalAccounts] = useState<{id: string, account_name: string, client_id: string, platform: string}[]>([])
+  const allFilteredAccounts = [
+    ...filteredAccounts,
+    ...localAccounts.filter(a => a.client_id === clientId && a.platform === platform)
+  ]
+
   // When client/platform changes, reset account selection
   function handleClientChange(id: string) {
     setClientId(id)
@@ -80,10 +87,16 @@ export default function UploadClient({ clients, adAccounts: initialAccounts }: P
 
   function getAccountName(): string {
     if (selectedAccountId && selectedAccountId !== 'new') {
-      const acc = adAccounts.find(a => a.id === selectedAccountId)
+      const acc = [...adAccounts, ...localAccounts].find(a => a.id === selectedAccountId)
       return acc?.account_name || 'Default'
     }
-    return newAccountName.trim() || 'Manual Entry'
+    const name = newAccountName.trim() || 'Manual Entry'
+    // Add to local accounts so it appears in dropdown for next import
+    const newId = `local-${Date.now()}`
+    setLocalAccounts(prev => [...prev, { id: newId, account_name: name, client_id: clientId, platform }])
+    setSelectedAccountId(newId)
+    setNewAccountName('')
+    return name
   }
 
   async function submitRange() {
@@ -322,10 +335,10 @@ export default function UploadClient({ clients, adAccounts: initialAccounts }: P
         <select
           value={selectedAccountId}
           onChange={e => { setSelectedAccountId(e.target.value); if (e.target.value !== 'new') setNewAccountName('') }}
-          style={{ marginBottom: filteredAccounts.length > 0 || selectedAccountId === 'new' ? '10px' : '0' }}
+          style={{ marginBottom: selectedAccountId === 'new' ? '10px' : '0' }}
         >
           <option value="">— Select account —</option>
-          {filteredAccounts.map(a => (
+          {allFilteredAccounts.map(a => (
             <option key={a.id} value={a.id}>{a.account_name}</option>
           ))}
           <option value="new">＋ Create new account...</option>
@@ -336,12 +349,11 @@ export default function UploadClient({ clients, adAccounts: initialAccounts }: P
             placeholder='Name this account e.g. "Search Campaigns"'
             value={newAccountName}
             onChange={e => setNewAccountName(e.target.value)}
-            autoFocus
           />
         )}
-        {filteredAccounts.length === 0 && selectedAccountId !== 'new' && (
-          <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '6px' }}>
-            No accounts yet for this client/platform — select "Create new account" above.
+        {allFilteredAccounts.length === 0 && selectedAccountId !== 'new' && selectedAccountId === '' && (
+          <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '8px' }}>
+            No accounts yet — select "＋ Create new account" to create one.
           </div>
         )}
       </div>

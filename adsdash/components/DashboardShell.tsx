@@ -33,7 +33,6 @@ export default function DashboardShell({ profile, clients, children }: Props) {
   const navItems = [
     { href: '/dashboard', label: 'Dashboard', icon: '▦' },
     ...(isAdmin ? [
-      { href: '/dashboard/accounts', label: 'Ad Accounts', icon: '🔗' },
       { href: '/dashboard/upload', label: 'Import Data', icon: '⬆' },
       { href: '/dashboard/admin', label: 'Admin', icon: '⚙' },
       { href: '/dashboard/reports', label: 'Reports', icon: '📊' },

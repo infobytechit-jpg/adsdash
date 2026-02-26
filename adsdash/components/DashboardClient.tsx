@@ -24,7 +24,6 @@ const COLORS = ['#00C8E0', '#a855f7', '#ffc53d', '#00e09e']
 
 const ALL_METRICS = [
   { key: 'spend', label: '💰 Total Spend', accent: '#00C8E0' },
-  { key: 'conversion_value', label: '💎 Conv. Value', accent: '#00C8E0' },
   { key: 'conversions', label: '✅ Conversions', accent: '#00e09e' },
   { key: 'roas', label: '📈 ROAS', accent: '#ffc53d' },
   { key: 'leads', label: '🎯 Leads', accent: '#a855f7' },
@@ -49,7 +48,6 @@ export default function DashboardClient({ profile, clientData, metrics, campaign
     impressions: clientData?.show_impressions ?? false,
     cpc: clientData?.show_cpc ?? false,
     ctr: clientData?.show_ctr ?? false,
-conversion_value: clientData?.show_conversion_value ?? true,
   }
 
   const [visibleMetrics, setVisibleMetrics] = useState<Record<string, boolean>>(defaultVisible)
@@ -164,7 +162,6 @@ conversion_value: clientData?.show_conversion_value ?? true,
     clicks: { value: fmt(totals.clicks), sub: 'Total link clicks' },
     impressions: { value: fmt(totals.impressions), sub: 'Total impressions' },
     cpc: { value: `€${cpc}`, sub: 'Cost per click' },
-conversion_value: { value: fmtEur(totals.conversion_value), sub: 'Total revenue from ads' },
     ctr: { value: `${ctr}%`, sub: 'Click-through rate' },
   }
 
@@ -230,25 +227,20 @@ conversion_value: { value: fmtEur(totals.conversion_value), sub: 'Total revenue 
             </button>
           ))}
 
-          {/* Account selector — only show if multiple accounts */}
-          {accounts.length > 1 && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: 'auto' }}>
-              <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 600 }}>Account:</span>
-              <div style={{ display: 'flex', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden' }}>
-                <button onClick={() => setParam('account', 'all')} style={{
-                  padding: '7px 14px', fontSize: '12px', fontWeight: 600, border: 'none', cursor: 'pointer',
-                  background: selectedAccount === 'all' ? 'var(--cyan)' : 'transparent',
-                  color: selectedAccount === 'all' ? 'var(--black)' : 'var(--text-muted)',
-                }}>All</button>
+          {/* Account selector — dropdown, show if any accounts exist */}
+          {accounts.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto' }}>
+              <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 600, whiteSpace: 'nowrap' }}>Account:</span>
+              <select
+                value={selectedAccount}
+                onChange={e => setParam('account', e.target.value)}
+                style={{ fontSize: '12px', padding: '7px 10px', minWidth: '160px', maxWidth: '220px' }}
+              >
+                <option value="all">All Accounts</option>
                 {accounts.map(acc => (
-                  <button key={acc} onClick={() => setParam('account', acc)} style={{
-                    padding: '7px 14px', fontSize: '12px', fontWeight: 600, border: 'none', cursor: 'pointer',
-                    background: selectedAccount === acc ? 'var(--cyan)' : 'transparent',
-                    color: selectedAccount === acc ? 'var(--black)' : 'var(--text-muted)',
-                    borderLeft: '1px solid var(--border)',
-                  }}>{acc}</button>
+                  <option key={acc} value={acc}>{acc}</option>
                 ))}
-              </div>
+              </select>
             </div>
           )}
         </div>

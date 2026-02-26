@@ -14,10 +14,7 @@ export default async function AdminPage() {
 
   const { data: clients } = await supabase
     .from('clients')
-    .select(`
-      *,
-      ad_accounts (id, platform, account_name, is_active)
-    `)
+    .select(`*, ad_accounts (id, platform, account_name, is_active)`)
     .order('name')
 
   const { data: reports } = await supabase
@@ -26,5 +23,10 @@ export default async function AdminPage() {
     .order('created_at', { ascending: false })
     .limit(10)
 
-  return <AdminClient clients={clients || []} reports={reports || []} />
+  const { data: adAccounts } = await supabase
+    .from('ad_accounts')
+    .select('*')
+    .order('account_name')
+
+  return <AdminClient clients={clients || []} reports={reports || []} adAccounts={adAccounts || []} />
 }
