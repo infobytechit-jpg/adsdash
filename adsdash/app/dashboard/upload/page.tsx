@@ -14,5 +14,8 @@ export default async function UploadPage() {
   const { data: clients } = await supabase
     .from('clients').select('id, name, avatar_color').order('name')
 
-  return <UploadClient clients={clients || []} />
+  const { data: adAccounts } = await supabase
+    .from('ad_accounts').select('*').order('account_name')
+
+  return <UploadClient clients={clients || []} adAccounts={adAccounts || []} />
 }

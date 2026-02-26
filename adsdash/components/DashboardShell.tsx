@@ -14,7 +14,7 @@ export default function DashboardShell({ profile, clients, children }: Props) {
   const pathname = usePathname()
   const router = useRouter()
   const searchParams = useSearchParams()
-  const [collapsed, setCollapsed] = useState(false)
+  const [mobileOpen, setMobileOpen] = useState(false)
   const supabase = createClient()
 
   const isAdmin = profile?.role === 'admin'
@@ -25,21 +25,24 @@ export default function DashboardShell({ profile, clients, children }: Props) {
     window.location.href = '/login'
   }
 
+  function navigate(href: string) {
+    router.push(href)
+    setMobileOpen(false)
+  }
+
   const navItems = [
     { href: '/dashboard', label: 'Dashboard', icon: '▦' },
     ...(isAdmin ? [
       { href: '/dashboard/accounts', label: 'Ad Accounts', icon: '🔗' },
-      { href: "/dashboard/admin", label: "Admin", icon: "⚙" },
-      { href: "/dashboard/upload", label: "Import Data", icon: "⬆" },
+      { href: '/dashboard/Upload', label: 'Import Data', icon: '⬆' },
+      { href: '/dashboard/admin', label: 'Admin', icon: '⚙' },
       { href: '/dashboard/reports', label: 'Reports', icon: '📊' },
     ] : [
       { href: '/dashboard/reports', label: 'Reports', icon: '📊' },
     ]),
   ]
 
-  const W = collapsed ? '64px' : '220px'
-
-  return (
+  const SidebarContent = () => (
     <>
       <style>{`
         :root {
@@ -76,100 +79,121 @@ export default function DashboardShell({ profile, clients, children }: Props) {
         ::-webkit-scrollbar { width: 4px; height: 4px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+        @media (max-width: 768px) {
+          .desktop-sidebar { display: none !important; }
+          .mobile-header { display: flex !important; }
+          .main-content { padding-bottom: 70px !important; }
+        }
+        @media (min-width: 769px) {
+          .mobile-header { display: none !important; }
+          .mobile-nav { display: none !important; }
+        }
       `}</style>
 
-      <div style={{ display: 'flex', height: '100vh', background: 'var(--black)', overflow: 'hidden' }}>
-        {/* Sidebar */}
-        <div style={{
-          width: W, minWidth: W, height: '100vh', background: 'var(--surface)',
-          borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column',
-          transition: 'width 0.2s, min-width 0.2s', overflow: 'hidden', flexShrink: 0,
-        }}>
-          {/* Logo */}
-          <div style={{ height: '64px', display: 'flex', alignItems: 'center', padding: collapsed ? '0 16px' : '0 20px', borderBottom: '1px solid var(--border)', gap: '10px', flexShrink: 0 }}>
-            <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'var(--cyan)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-                <path d="M4 5 L9 14 L14 5" stroke="#080c0f" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </div>
-            {!collapsed && (
-              <span style={{ fontFamily: 'Syne, sans-serif', fontSize: '18px', fontWeight: 800, letterSpacing: '-0.3px', whiteSpace: 'nowrap' }}>
-                Ads<span style={{ color: 'var(--cyan)' }}>Dash</span>
-              </span>
-            )}
-            <div style={{ flex: 1 }} />
-            <button onClick={() => setCollapsed(!collapsed)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '14px', padding: '4px', flexShrink: 0 }}>
-              {collapsed ? '→' : '←'}
-            </button>
-          </div>
+      {/* Logo */}
+      <div style={{ height: '64px', display: 'flex', alignItems: 'center', padding: '0 20px', borderBottom: '1px solid var(--border)', gap: '10px', flexShrink: 0 }}>
+        <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'var(--cyan)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+            <path d="M4 5 L9 14 L14 5" stroke="#080c0f" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </div>
+        <span style={{ fontFamily: 'Syne, sans-serif', fontSize: '18px', fontWeight: 800, letterSpacing: '-0.3px' }}>
+          Ads<span style={{ color: 'var(--cyan)' }}>Dash</span>
+        </span>
+      </div>
 
-          {/* Client selector (admin only) */}
-          {isAdmin && !collapsed && clients.length > 0 && (
-            <div style={{ padding: '12px 12px 0' }}>
-              <div style={{ fontSize: '10px', fontWeight: 600, letterSpacing: '0.8px', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '6px', paddingLeft: '4px' }}>Client</div>
-              <select
-                value={selectedClient}
-                onChange={e => router.push(`/dashboard?client=${e.target.value}`)}
-                style={{ fontSize: '12px', padding: '7px 10px' }}
-              >
-                {clients.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-            </div>
-          )}
+      {/* Client selector (admin only) */}
+      {isAdmin && clients.length > 0 && (
+        <div style={{ padding: '12px 12px 0' }}>
+          <div style={{ fontSize: '10px', fontWeight: 600, letterSpacing: '0.8px', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '6px', paddingLeft: '4px' }}>Client</div>
+          <select value={selectedClient} onChange={e => router.push(`/dashboard?client=${e.target.value}`)} style={{ fontSize: '12px', padding: '7px 10px' }}>
+            {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
+      )}
 
-          {/* Nav */}
-          <nav style={{ flex: 1, padding: '12px 8px', overflowY: 'auto' }}>
-            {navItems.map(item => {
-              const active = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href))
-              return (
-                <button key={item.href} onClick={() => router.push(item.href)} style={{
-                  width: '100%', display: 'flex', alignItems: 'center', gap: '10px',
-                  padding: collapsed ? '10px 0' : '10px 12px', justifyContent: collapsed ? 'center' : 'flex-start',
-                  borderRadius: '8px', border: 'none', cursor: 'pointer', marginBottom: '2px',
-                  background: active ? 'rgba(0,200,224,0.12)' : 'transparent',
-                  color: active ? 'var(--cyan)' : 'var(--text-muted)',
-                  fontSize: '13px', fontWeight: active ? 600 : 400,
-                  transition: 'all 0.15s',
-                }}>
-                  <span style={{ fontSize: '16px', flexShrink: 0 }}>{item.icon}</span>
-                  {!collapsed && <span style={{ whiteSpace: 'nowrap' }}>{item.label}</span>}
-                </button>
-              )
-            })}
-          </nav>
-
-          {/* Profile + logout */}
-          <div style={{ padding: '12px 8px', borderTop: '1px solid var(--border)', flexShrink: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: collapsed ? '8px 0' : '8px 12px', justifyContent: collapsed ? 'center' : 'flex-start' }}>
-              <div style={{ width: '30px', height: '30px', borderRadius: '8px', background: profile?.avatar_color || 'var(--cyan)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 800, color: '#080c0f', flexShrink: 0 }}>
-                {profile?.full_name?.slice(0, 2).toUpperCase() || profile?.email?.slice(0, 2).toUpperCase() || 'AD'}
-              </div>
-              {!collapsed && (
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: '12px', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {profile?.full_name || profile?.email?.split('@')[0]}
-                  </div>
-                  <div style={{ fontSize: '10px', color: 'var(--cyan)', fontWeight: 600 }}>{profile?.role}</div>
-                </div>
-              )}
-            </div>
-            <button onClick={handleLogout} style={{
-              width: '100%', padding: collapsed ? '8px 0' : '8px 12px', borderRadius: '8px', border: 'none',
-              background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '12px',
-              display: 'flex', alignItems: 'center', gap: '8px', justifyContent: collapsed ? 'center' : 'flex-start',
+      {/* Nav */}
+      <nav style={{ flex: 1, padding: '12px 8px', overflowY: 'auto' }}>
+        {navItems.map(item => {
+          const active = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href))
+          return (
+            <button key={item.href} onClick={() => navigate(item.href)} style={{
+              width: '100%', display: 'flex', alignItems: 'center', gap: '10px',
+              padding: '10px 12px', borderRadius: '8px', border: 'none', cursor: 'pointer', marginBottom: '2px',
+              background: active ? 'rgba(0,200,224,0.12)' : 'transparent',
+              color: active ? 'var(--cyan)' : 'var(--text-muted)',
+              fontSize: '13px', fontWeight: active ? 600 : 400,
             }}>
-              <span>⎋</span>
-              {!collapsed && 'Sign out'}
+              <span style={{ fontSize: '16px', flexShrink: 0 }}>{item.icon}</span>
+              <span>{item.label}</span>
             </button>
+          )
+        })}
+      </nav>
+
+      {/* Profile + logout */}
+      <div style={{ padding: '12px 8px', borderTop: '1px solid var(--border)', flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 12px', marginBottom: '4px' }}>
+          <div style={{ width: '30px', height: '30px', borderRadius: '8px', background: profile?.avatar_color || 'var(--cyan)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 800, color: '#080c0f', flexShrink: 0 }}>
+            {profile?.email?.slice(0, 2).toUpperCase() || 'AD'}
           </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: '12px', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {profile?.full_name || profile?.email?.split('@')[0]}
+            </div>
+            <div style={{ fontSize: '10px', color: 'var(--cyan)', fontWeight: 600 }}>{profile?.role}</div>
+          </div>
+        </div>
+        <button onClick={handleLogout} style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span>⎋</span> Sign out
+        </button>
+      </div>
+    </>
+  )
+
+  return (
+    <>
+      <div style={{ display: 'flex', height: '100vh', background: 'var(--black)', overflow: 'hidden' }}>
+        {/* Desktop Sidebar */}
+        <div className="desktop-sidebar" style={{ width: '220px', minWidth: '220px', height: '100vh', background: 'var(--surface)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+          <SidebarContent />
         </div>
 
         {/* Main content */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
-          {children}
+          {/* Mobile header */}
+          <div className="mobile-header" style={{ height: '56px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', display: 'none', alignItems: 'center', padding: '0 16px', gap: '12px', flexShrink: 0 }}>
+            <button onClick={() => setMobileOpen(true)} style={{ background: 'none', border: 'none', color: 'var(--text)', cursor: 'pointer', fontSize: '20px', padding: '4px' }}>☰</button>
+            <span style={{ fontFamily: 'Syne, sans-serif', fontSize: '16px', fontWeight: 800 }}>Ads<span style={{ color: 'var(--cyan)' }}>Dash</span></span>
+          </div>
+
+          <div className="main-content" style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            {children}
+          </div>
         </div>
+      </div>
+
+      {/* Mobile drawer overlay */}
+      {mobileOpen && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 200 }}>
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.7)' }} onClick={() => setMobileOpen(false)} />
+          <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '260px', background: 'var(--surface)', display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--border)' }}>
+            <SidebarContent />
+          </div>
+        </div>
+      )}
+
+      {/* Mobile bottom nav */}
+      <div className="mobile-nav" style={{ position: 'fixed', bottom: 0, left: 0, right: 0, height: '64px', background: 'var(--surface)', borderTop: '1px solid var(--border)', display: 'none', alignItems: 'center', justifyContent: 'space-around', zIndex: 100, padding: '0 8px' }}>
+        {navItems.slice(0, 4).map(item => {
+          const active = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href))
+          return (
+            <button key={item.href} onClick={() => navigate(item.href)} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px', background: 'none', border: 'none', cursor: 'pointer', padding: '8px 12px', borderRadius: '8px', color: active ? 'var(--cyan)' : 'var(--text-muted)', flex: 1 }}>
+              <span style={{ fontSize: '20px' }}>{item.icon}</span>
+              <span style={{ fontSize: '10px', fontWeight: active ? 600 : 400 }}>{item.label.split(' ')[0]}</span>
+            </button>
+          )
+        })}
       </div>
     </>
   )
