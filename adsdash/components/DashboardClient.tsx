@@ -24,6 +24,7 @@ const COLORS = ['#00C8E0', '#a855f7', '#ffc53d', '#00e09e']
 
 const ALL_METRICS = [
   { key: 'spend', label: '💰 Total Spend', accent: '#00C8E0' },
+  { key: 'conversion_value', label: '💎 Conv. Value', accent: '#00C8E0' },
   { key: 'conversions', label: '✅ Conversions', accent: '#00e09e' },
   { key: 'roas', label: '📈 ROAS', accent: '#ffc53d' },
   { key: 'leads', label: '🎯 Leads', accent: '#a855f7' },
@@ -48,6 +49,7 @@ export default function DashboardClient({ profile, clientData, metrics, campaign
     impressions: clientData?.show_impressions ?? false,
     cpc: clientData?.show_cpc ?? false,
     ctr: clientData?.show_ctr ?? false,
+conversion_value: clientData?.show_conversion_value ?? true,
   }
 
   const [visibleMetrics, setVisibleMetrics] = useState<Record<string, boolean>>(defaultVisible)
@@ -162,6 +164,7 @@ export default function DashboardClient({ profile, clientData, metrics, campaign
     clicks: { value: fmt(totals.clicks), sub: 'Total link clicks' },
     impressions: { value: fmt(totals.impressions), sub: 'Total impressions' },
     cpc: { value: `€${cpc}`, sub: 'Cost per click' },
+conversion_value: { value: fmtEur(totals.conversion_value), sub: 'Total revenue from ads' },
     ctr: { value: `${ctr}%`, sub: 'Click-through rate' },
   }
 
