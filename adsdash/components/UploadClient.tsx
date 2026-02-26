@@ -135,16 +135,8 @@ export default function UploadClient({ clients, adAccounts }: Props) {
         const acc = adAccounts.find(a => a.id === selectedAccountId)
         accountName = acc?.account_name || 'Default'
       } else {
-        accountName = newAccountName.trim()
-        const { error: accErr } = await supabase.from('ad_accounts').insert({
-          client_id: clientId,
-          platform,
-          account_name: accountName,
-          account_id: accountName,
-          is_active: true,
-        })
-        if (accErr) throw new Error('Could not create account: ' + accErr.message)
-      }
+  accountName = newAccountName.trim()
+}
 
       const text = await readFileAsText(file!)
       const { rows } = parseCSV(text)
