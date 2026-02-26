@@ -159,12 +159,15 @@ export default function AdminClient({ clients, reports, adAccounts: initialAccou
   }
 
   // ── User account assignments ──────────────────────────────────
-  // Get all unique accounts (deduplicated by name+platform+source_client)
-  const uniqueAccounts = accounts.reduce((acc: any[], a) => {
-    const key = `${a.client_id}|${a.platform}|${a.account_name}`
-    if (!acc.find(x => `${x.client_id}|${x.platform}|${x.account_name}` === key)) acc.push(a)
-    return acc
-  }, [])
+  // Only show accounts where this IS the source client (not copies assigned from elsewhere)
+  // An account is a "source" if it's not in the assignments table as a non-owner
+  const sourceAccounts = accounts.filter(a => {
+    // Check if this account exists as an assignment (meaning it's a copy, not source)
+    const isAssignedCopy = assignments.some(
+      x => x.client_id === a.client_id && x.account_name === a.account_name && x.platform === a.platform
+    )
+    return !isAssignedCopy
+  })
 
   function isAssigned(clientId: string, accountName: string, platform: string, sourceClientId: string) {
     // Always assigned to original client
@@ -382,7 +385,7 @@ export default function AdminClient({ clients, reports, adAccounts: initialAccou
                   <div>
                     <div style={{ fontSize: '13px', fontWeight: selectedUserForAssign === c.id ? 700 : 500, color: selectedUserForAssign === c.id ? 'var(--cyan)' : 'var(--text)' }}>{c.name}</div>
                     <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                      {assignments.filter(a => a.client_id === c.id).length + (accounts.filter(a => a.client_id === c.id).length)} account{(assignments.filter(a => a.client_id === c.id).length + accounts.filter(a => a.client_id === c.id).length) !== 1 ? 's' : ''}
+                      {accounts.filter(a => a.client_id === c.id && !assignments.some(x => x.client_id === c.id && x.account_name === a.account_name && x.platform === a.platform)).length + assignments.filter(a => a.client_id === c.id).length} account{(accounts.filter(a => a.client_id === c.id && !assignments.some(x => x.client_id === c.id && x.account_name === a.account_name && x.platform === a.platform)).length + assignments.filter(a => a.client_id === c.id).length) !== 1 ? 's' : ''} visible
                     </div>
                   </div>
                 </button>
@@ -406,13 +409,13 @@ export default function AdminClient({ clients, reports, adAccounts: initialAccou
                     </div>
                   </div>
 
-                  {uniqueAccounts.length === 0 ? (
+                  {sourceAccounts.length === 0 ? (
                     <div style={{ background: 'var(--surface2)', border: '1px dashed var(--border)', borderRadius: '12px', padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
                       No accounts exist yet. Add accounts first in the Ad Accounts tab.
                     </div>
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      {uniqueAccounts.map(a => {
+                      {sourceAccounts.map(a => {
                         const isSource = a.client_id === selectedUserForAssign
                         const assigned = isAssigned(selectedUserForAssign, a.account_name, a.platform, a.client_id)
                         const sourceName = clientsList.find(c => c.id === a.client_id)?.name || 'Unknown'
