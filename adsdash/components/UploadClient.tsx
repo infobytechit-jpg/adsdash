@@ -20,6 +20,10 @@ export default function UploadClient({ clients, adAccounts: initialAccounts }: P
   const [success, setSuccess] = useState('')
 
   // Manual entry state
+  const [manualMode, setManualMode] = useState<'daily' | 'range'>('daily')
+  const [rangeStart, setRangeStart] = useState('')
+  const [rangeEnd, setRangeEnd] = useState('')
+  const [rangeData, setRangeData] = useState({ spend: '', conversion_value: '', conversions: '', leads: '' })
   const [manualRows, setManualRows] = useState([
     { date: '', spend: '', conversion_value: '', conversions: '', leads: '' }
   ])
@@ -74,7 +78,53 @@ export default function UploadClient({ clients, adAccounts: initialAccounts }: P
     return null
   }
 
-  // ── MANUAL ENTRY ──
+  function getAccountName(): string {
+    if (selectedAccountId && selectedAccountId !== 'new') {
+      const acc = adAccounts.find(a => a.id === selectedAccountId)
+      return acc?.account_name || 'Default'
+    }
+    return newAccountName.trim() || 'Manual Entry'
+  }
+
+  async function submitRange() {
+    if (!rangeStart || !rangeEnd) { setError('Please select a start and end date.'); return }
+    if (!rangeData.spend) { setError('Please enter the spend amount.'); return }
+    const start = new Date(rangeStart)
+    const end = new Date(rangeEnd)
+    if (start > end) { setError('Start date must be before end date.'); return }
+
+    setLoading(true); setError(''); setSuccess('')
+    try {
+      const accountName = getAccountName()
+      // Distribute totals evenly across days
+      const days: string[] = []
+      const cur = new Date(start)
+      while (cur <= end) {
+        days.push(cur.toISOString().split('T')[0])
+        cur.setDate(cur.getDate() + 1)
+      }
+      const n = days.length
+      const records = days.map(date => ({
+        client_id: clientId, platform, account_name: accountName, date,
+        spend: Math.round((parseFloat(rangeData.spend) / n) * 100) / 100,
+        conversion_value: Math.round((parseFloat(rangeData.conversion_value || '0') / n) * 100) / 100,
+        conversions: Math.round(parseFloat(rangeData.conversions || '0') / n * 10) / 10,
+        leads: Math.round(parseFloat(rangeData.leads || '0') / n * 10) / 10,
+        impressions: 0, clicks: 0,
+      }))
+
+      const { error: err } = await supabase.from('metrics_cache')
+        .upsert(records, { onConflict: 'client_id,platform,date,account_name' })
+      if (err) throw new Error(err.message)
+      setSuccess(`✅ Data spread across ${n} days (${rangeStart} → ${rangeEnd}) saved!`)
+      setRangeData({ spend: '', conversion_value: '', conversions: '', leads: '' })
+    } catch (e: any) {
+      setError(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   function addRow() {
     setManualRows(prev => [...prev, { date: '', spend: '', conversion_value: '', conversions: '', leads: '' }])
   }
@@ -92,14 +142,7 @@ export default function UploadClient({ clients, adAccounts: initialAccounts }: P
 
     setLoading(true); setError(''); setSuccess('')
     try {
-      let accountName = ''
-      if (selectedAccountId && selectedAccountId !== 'new') {
-        const acc = adAccounts.find(a => a.id === selectedAccountId)
-        accountName = acc?.account_name || 'Manual Entry'
-      } else {
-        accountName = newAccountName.trim() || 'Manual Entry'
-      }
-
+      const accountName = getAccountName()
       const records = validRows.map(r => ({
         client_id: clientId,
         platform,
@@ -271,36 +314,36 @@ export default function UploadClient({ clients, adAccounts: initialAccounts }: P
 
   const inputStyle = { fontSize: '13px', padding: '8px 10px', background: 'var(--surface3)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: '6px', outline: 'none', width: '100%', fontFamily: 'inherit' }
 
-  // Shared account picker used in both modes
+  // Shared account picker — dropdown for existing + input for new
   function AccountPicker() {
     return (
       <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px' }}>
         <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '12px' }}>Ad Account</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        <select
+          value={selectedAccountId}
+          onChange={e => { setSelectedAccountId(e.target.value); if (e.target.value !== 'new') setNewAccountName('') }}
+          style={{ marginBottom: filteredAccounts.length > 0 || selectedAccountId === 'new' ? '10px' : '0' }}
+        >
+          <option value="">— Select account —</option>
           {filteredAccounts.map(a => (
-            <div key={a.id} onClick={() => { setSelectedAccountId(a.id); setNewAccountName('') }}
-              style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 14px', background: selectedAccountId === a.id ? 'rgba(0,200,224,0.08)' : 'var(--surface3)', border: `1px solid ${selectedAccountId === a.id ? 'var(--cyan)' : 'var(--border)'}`, borderRadius: '8px', cursor: 'pointer' }}>
-              <div style={{ width: '16px', height: '16px', borderRadius: '50%', border: `2px solid ${selectedAccountId === a.id ? 'var(--cyan)' : 'var(--text-muted)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                {selectedAccountId === a.id && <div style={{ width: '7px', height: '7px', borderRadius: '50%', background: 'var(--cyan)' }} />}
-              </div>
-              <span style={{ fontSize: '13px', fontWeight: 600 }}>{a.account_name}</span>
-            </div>
+            <option key={a.id} value={a.id}>{a.account_name}</option>
           ))}
-          <div onClick={() => setSelectedAccountId('new')}
-            style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '10px 14px', background: selectedAccountId === 'new' ? 'rgba(0,200,224,0.08)' : 'var(--surface3)', border: `1px solid ${selectedAccountId === 'new' ? 'var(--cyan)' : 'var(--border)'}`, borderRadius: '8px', cursor: 'pointer' }}>
-            <div style={{ width: '16px', height: '16px', borderRadius: '50%', border: `2px solid ${selectedAccountId === 'new' ? 'var(--cyan)' : 'var(--text-muted)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: '2px' }}>
-              {selectedAccountId === 'new' && <div style={{ width: '7px', height: '7px', borderRadius: '50%', background: 'var(--cyan)' }} />}
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: '13px', fontWeight: 600, marginBottom: selectedAccountId === 'new' ? '8px' : '0' }}>＋ New account name</div>
-              {selectedAccountId === 'new' && (
-                <input type="text" placeholder='e.g. "Search Campaigns"' value={newAccountName}
-                  onChange={e => setNewAccountName(e.target.value)} onClick={e => e.stopPropagation()}
-                  autoFocus style={inputStyle} />
-              )}
-            </div>
+          <option value="new">＋ Create new account...</option>
+        </select>
+        {selectedAccountId === 'new' && (
+          <input
+            type="text"
+            placeholder='Name this account e.g. "Search Campaigns"'
+            value={newAccountName}
+            onChange={e => setNewAccountName(e.target.value)}
+            autoFocus
+          />
+        )}
+        {filteredAccounts.length === 0 && selectedAccountId !== 'new' && (
+          <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '6px' }}>
+            No accounts yet for this client/platform — select "Create new account" above.
           </div>
-        </div>
+        )}
       </div>
     )
   }
@@ -350,6 +393,55 @@ export default function UploadClient({ clients, adAccounts: initialAccounts }: P
           {/* ── MANUAL MODE ── */}
           {mode === 'manual' && (
             <>
+              {/* Daily vs Range toggle */}
+              <div style={{ display: 'flex', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden', alignSelf: 'flex-start' }}>
+                {[['daily', '📅 By Day'], ['range', '📆 Date Range']].map(([m, label]) => (
+                  <button key={m} onClick={() => { setManualMode(m as any); setError(''); setSuccess('') }}
+                    style={{ padding: '8px 16px', fontSize: '12px', fontWeight: 600, border: 'none', cursor: 'pointer', background: manualMode === m ? 'var(--cyan)' : 'transparent', color: manualMode === m ? '#080c0f' : 'var(--text-muted)' }}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {/* DATE RANGE mode */}
+              {manualMode === 'range' && (
+                <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '20px' }}>
+                  <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '4px' }}>Enter Monthly / Period Totals</div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '16px' }}>Totals will be evenly distributed across all days in the range</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-mid)', marginBottom: '6px' }}>Start Date *</label>
+                      <input type="date" value={rangeStart} onChange={e => setRangeStart(e.target.value)} />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-mid)', marginBottom: '6px' }}>End Date *</label>
+                      <input type="date" value={rangeEnd} onChange={e => setRangeEnd(e.target.value)} />
+                    </div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    {[
+                      { key: 'spend', label: 'Total Spend (€) *' },
+                      { key: 'conversion_value', label: 'Total Conv. Value (€)' },
+                      { key: 'conversions', label: 'Total Conversions' },
+                      { key: 'leads', label: 'Total Leads' },
+                    ].map(f => (
+                      <div key={f.key}>
+                        <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-mid)', marginBottom: '6px' }}>{f.label}</label>
+                        <input type="number" placeholder="0" step="0.01" value={(rangeData as any)[f.key]}
+                          onChange={e => setRangeData(prev => ({ ...prev, [f.key]: e.target.value }))} />
+                      </div>
+                    ))}
+                  </div>
+                  {rangeStart && rangeEnd && rangeStart <= rangeEnd && (
+                    <div style={{ marginTop: '12px', padding: '10px 14px', background: 'rgba(0,200,224,0.06)', border: '1px solid rgba(0,200,224,0.2)', borderRadius: '8px', fontSize: '12px', color: 'var(--text-mid)' }}>
+                      ℹ️ Will create {Math.round((new Date(rangeEnd).getTime() - new Date(rangeStart).getTime()) / 86400000) + 1} daily records
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* DAILY mode */}
+              {manualMode === 'daily' && (
               <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
                 <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div style={{ fontSize: '13px', fontWeight: 700 }}>Enter Daily Metrics</div>
@@ -382,15 +474,18 @@ export default function UploadClient({ clients, adAccounts: initialAccounts }: P
                   ))}
                 </div>
               </div>
+              )}
 
               {error && <div style={{ background: 'rgba(255,77,106,0.1)', border: '1px solid rgba(255,77,106,0.3)', borderRadius: '8px', padding: '12px 16px', fontSize: '13px', color: 'var(--red)' }}>⚠ {error}</div>}
               {success && <div style={{ background: 'rgba(0,224,158,0.1)', border: '1px solid rgba(0,224,158,0.3)', borderRadius: '8px', padding: '12px 16px', fontSize: '13px', color: 'var(--green)' }}>{success}</div>}
 
               <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                <button onClick={addRow} style={{ padding: '10px 18px', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-mid)' }}>
-                  ＋ Add row
-                </button>
-                <button onClick={submitManual} disabled={loading}
+                {manualMode === 'daily' && (
+                  <button onClick={addRow} style={{ padding: '10px 18px', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-mid)' }}>
+                    ＋ Add row
+                  </button>
+                )}
+                <button onClick={manualMode === 'daily' ? submitManual : submitRange} disabled={loading}
                   style={{ padding: '10px 24px', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', background: loading ? 'var(--surface3)' : 'var(--cyan)', color: loading ? 'var(--text-muted)' : '#080c0f', border: 'none' }}>
                   {loading ? '⏳ Saving...' : '💾 Save Data →'}
                 </button>
