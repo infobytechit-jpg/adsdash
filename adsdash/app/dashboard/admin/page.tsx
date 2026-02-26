@@ -40,7 +40,6 @@ export default async function AdminPage() {
   const extraAccounts = (metricAccounts || [])
     .filter((m: any) =>
       m.account_name &&
-      m.account_name !== 'Default' &&
       !existing.has(`${m.client_id}|${m.platform}|${m.account_name}`)
     )
     .map((m: any, i: number) => ({

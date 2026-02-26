@@ -4,26 +4,26 @@ import { NextResponse } from 'next/server'
 
 export async function POST(req: Request) {
   try {
-    const { client_id, platform, account_name, ad_account_id, from_metrics } = await req.json()
+    const { client_id, platform, old_name, new_name, ad_account_id, from_metrics } = await req.json()
     const supabase = createClient()
 
-    // Delete all metric data for this account
+    // Always update metrics_cache
     await supabase
       .from('metrics_cache')
-      .delete()
+      .update({ account_name: new_name })
       .eq('client_id', client_id)
       .eq('platform', platform)
-      .eq('account_name', account_name)
+      .eq('account_name', old_name)
 
-    // Also delete from ad_accounts table if it exists there
+    // Also update ad_accounts if it exists there
     if (!from_metrics && ad_account_id) {
       await supabase
         .from('ad_accounts')
-        .delete()
+        .update({ account_name: new_name })
         .eq('id', ad_account_id)
     }
 
-    // Revalidate ALL dashboard paths so cached data is cleared
+    // Revalidate ALL dashboard paths
     revalidatePath('/dashboard', 'layout')
 
     return NextResponse.json({ success: true })

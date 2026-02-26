@@ -105,24 +105,21 @@ export default function AdminClient({ clients, reports, adAccounts: initialAccou
     const account = accounts.find(a => a.id === id)
     if (!account) return
 
-    if (account.from_metrics) {
-      // Rename in metrics_cache only
-      await supabase.from('metrics_cache')
-        .update({ account_name: editingName })
-        .eq('client_id', account.client_id)
-        .eq('platform', account.platform)
-        .eq('account_name', account.account_name)
-    } else {
-      const { error } = await supabase.from('ad_accounts').update({ account_name: editingName }).eq('id', id)
-      if (error) { alert(error.message); return }
-      // Also update metrics_cache to keep in sync
-      await supabase.from('metrics_cache')
-        .update({ account_name: editingName })
-        .eq('client_id', account.client_id)
-        .eq('platform', account.platform)
-        .eq('account_name', account.account_name)
-    }
-    setAccounts(prev => prev.map(a => a.id === id ? { ...a, account_name: editingName } : a))
+    const res = await fetch('/api/admin/rename-account', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        client_id: account.client_id,
+        platform: account.platform,
+        old_name: account.account_name,
+        new_name: editingName.trim(),
+        ad_account_id: account.from_metrics ? null : id,
+        from_metrics: account.from_metrics ?? false,
+      }),
+    })
+    const data = await res.json()
+    if (data.error) { alert(data.error); return }
+    setAccounts(prev => prev.map(a => a.id === id ? { ...a, account_name: editingName.trim() } : a))
     setEditingId(null)
   }
 
@@ -142,7 +139,7 @@ export default function AdminClient({ clients, reports, adAccounts: initialAccou
 
   async function toggleActive(id: string, current: boolean) {
     const account = accounts.find(a => a.id === id)
-    if (!account || account.from_metrics) return // metrics-only accounts can't be paused via DB
+    if (!account || account.from_metrics) return
     await supabase.from('ad_accounts').update({ is_active: !current }).eq('id', id)
     setAccounts(prev => prev.map(a => a.id === id ? { ...a, is_active: !current } : a))
   }
@@ -150,22 +147,23 @@ export default function AdminClient({ clients, reports, adAccounts: initialAccou
   async function removeAccount(id: string) {
     const account = accounts.find(a => a.id === id)
     if (!account) return
-    const msg = account.from_metrics
-      ? 'Delete this account AND all its metric data? This cannot be undone.'
-      : 'Delete this account? Metric data will also be removed.'
+    const msg = `Delete "${account.account_name}"? This will permanently remove all its metric data.`
     if (!confirm(msg)) return
-    // Delete metric data
-    await supabase.from('metrics_cache')
-      .delete()
-      .eq('client_id', account.client_id)
-      .eq('platform', account.platform)
-      .eq('account_name', account.account_name)
-    // Delete from ad_accounts if it exists there
-    if (!account.from_metrics) {
-      await supabase.from('ad_accounts').delete().eq('id', id)
-    }
+
+    const res = await fetch('/api/admin/delete-account', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        client_id: account.client_id,
+        platform: account.platform,
+        account_name: account.account_name,
+        ad_account_id: account.from_metrics ? null : id,
+        from_metrics: account.from_metrics ?? false,
+      }),
+    })
+    const data = await res.json()
+    if (data.error) { alert(data.error); return }
     setAccounts(prev => prev.filter(a => a.id !== id))
-    router.refresh()
   }
 
   const COLORS_OPTIONS = ['#00C8E0', '#a855f7', '#f97316', '#00e09e', '#ffc53d', '#ff4d6a', '#4285F4']
