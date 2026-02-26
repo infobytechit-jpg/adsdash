@@ -15,6 +15,7 @@ export default function DashboardShell({ profile, clients, children }: Props) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [pageLoading, setPageLoading] = useState(false)
   const supabase = createClient()
 
   const isAdmin = profile?.role === 'admin'
@@ -26,8 +27,10 @@ export default function DashboardShell({ profile, clients, children }: Props) {
   }
 
   function navigate(href: string) {
+    setPageLoading(true)
     router.push(href)
     setMobileOpen(false)
+    setTimeout(() => setPageLoading(false), 600)
   }
 
   const navItems = [
@@ -78,6 +81,21 @@ export default function DashboardShell({ profile, clients, children }: Props) {
         ::-webkit-scrollbar { width: 4px; height: 4px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+        @keyframes bounce {
+          0%, 80%, 100% { transform: scale(0); opacity: 0.3; }
+          40% { transform: scale(1); opacity: 1; }
+        }
+        .loading-dots span {
+          display: inline-block;
+          width: 8px; height: 8px;
+          border-radius: 50%;
+          background: #00C8E0;
+          margin: 0 3px;
+          animation: bounce 1.4s infinite ease-in-out both;
+        }
+        .loading-dots span:nth-child(1) { animation-delay: -0.32s; }
+        .loading-dots span:nth-child(2) { animation-delay: -0.16s; }
+        .loading-dots span:nth-child(3) { animation-delay: 0s; }
         @media (max-width: 768px) {
           .desktop-sidebar { display: none !important; }
           .mobile-header { display: flex !important; }
@@ -87,6 +105,18 @@ export default function DashboardShell({ profile, clients, children }: Props) {
           .mobile-header { display: none !important; }
           .mobile-nav { display: none !important; }
         }
+        @keyframes pageLoad {
+          0% { opacity: 0; transform: translateY(8px); }
+          100% { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes dotPulse {
+          0%, 80%, 100% { transform: scale(0.6); opacity: 0.3; }
+          40% { transform: scale(1); opacity: 1; }
+        }
+        .page-enter { animation: pageLoad 0.25s ease forwards; }
+        .loading-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--cyan); display: inline-block; animation: dotPulse 1.2s infinite ease-in-out; }
+        .loading-dot:nth-child(2) { animation-delay: 0.2s; }
+        .loading-dot:nth-child(3) { animation-delay: 0.4s; }
       `}</style>
 
       {/* Logo */}
@@ -194,6 +224,17 @@ export default function DashboardShell({ profile, clients, children }: Props) {
           )
         })}
       </div>
+
+      {/* Page loading overlay */}
+      {pageLoading && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(8,12,15,0.6)', backdropFilter: 'blur(2px)', pointerEvents: 'none' }}>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <div className="loading-dot" />
+            <div className="loading-dot" />
+            <div className="loading-dot" />
+          </div>
+        </div>
+      )}
     </>
   )
 }
