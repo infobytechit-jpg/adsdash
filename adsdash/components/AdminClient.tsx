@@ -123,6 +123,62 @@ export default function AdminClient({ clients, reports, adAccounts: initialAccou
     setEditingId(null)
   }
 
+  const [showShareModal, setShowShareModal] = useState(false)
+  const [shareAccount, setShareAccount] = useState<any>(null)
+  const [shareTargets, setShareTargets] = useState<string[]>([])
+  const [sharing, setSharing] = useState(false)
+
+  async function openShareModal(a: any) {
+    setShareAccount(a)
+    setShareTargets([])
+    setShowShareModal(true)
+  }
+
+  async function shareToClients() {
+    if (!shareAccount || !shareTargets.length) return
+    setSharing(true)
+    try {
+      // Copy all metric rows for this account to each target client
+      const { data: rows } = await supabase
+        .from('metrics_cache')
+        .select('*')
+        .eq('client_id', shareAccount.client_id)
+        .eq('platform', shareAccount.platform)
+        .eq('account_name', shareAccount.account_name)
+
+      for (const targetId of shareTargets) {
+        if (!rows?.length) continue
+        const copies = rows.map(({ id, created_at, ...r }: any) => ({
+          ...r,
+          client_id: targetId,
+          ad_account_id: null,
+        }))
+        await supabase.from('metrics_cache')
+          .upsert(copies, { onConflict: 'client_id,platform,date,account_name' })
+        // Add a synthetic entry to accounts list
+        const newId = `shared-${targetId}-${shareAccount.platform}-${shareAccount.account_name}`
+        setAccounts(prev => {
+          const exists = prev.find(x => x.client_id === targetId && x.platform === shareAccount.platform && x.account_name === shareAccount.account_name)
+          if (exists) return prev
+          return [...prev, { id: newId, client_id: targetId, platform: shareAccount.platform, account_name: shareAccount.account_name, is_active: true, from_metrics: true }]
+        })
+      }
+      revalidate()
+      setShowShareModal(false)
+      alert(`✅ Account shared to ${shareTargets.length} client(s)`)
+    } catch (e: any) { alert(e.message) }
+    setSharing(false)
+  }
+
+  async function revalidate() {
+    await fetch('/api/admin/delete-account', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ client_id: '_revalidate_only_', platform: 'none', account_name: '_none_' }),
+    }).catch(() => {})
+    router.refresh()
+  }
+
   async function reassignClient(id: string, newClientId: string) {
     const account = accounts.find(a => a.id === id)
     if (!account) return
@@ -135,6 +191,7 @@ export default function AdminClient({ clients, reports, adAccounts: initialAccou
       .eq('platform', account.platform)
       .eq('account_name', account.account_name)
     setAccounts(prev => prev.map(a => a.id === id ? { ...a, client_id: newClientId } : a))
+    router.refresh()
   }
 
   async function toggleActive(id: string, current: boolean) {
@@ -308,6 +365,10 @@ export default function AdminClient({ clients, reports, adAccounts: initialAccou
                             style={{ fontSize: '12px', padding: '5px 8px', width: 'auto', maxWidth: '130px' }}>
                             {clientsList.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                           </select>
+                          <button onClick={() => openShareModal(a)} title="Share to other clients"
+                            style={{ padding: '4px 10px', borderRadius: '100px', fontSize: '11px', fontWeight: 600, cursor: 'pointer', border: '1px solid rgba(0,200,224,0.3)', background: 'rgba(0,200,224,0.08)', color: 'var(--cyan)', flexShrink: 0 }}>
+                            ↗ Share
+                          </button>
                           <button onClick={() => toggleActive(a.id, a.is_active)}
                             style={{ padding: '4px 10px', borderRadius: '100px', fontSize: '11px', fontWeight: 600, cursor: 'pointer', border: 'none', background: a.is_active ? 'rgba(0,224,158,0.15)' : 'rgba(255,197,61,0.15)', color: a.is_active ? 'var(--green)' : 'var(--yellow)', flexShrink: 0 }}>
                             {a.is_active ? '● Active' : '● Paused'}
@@ -461,6 +522,47 @@ export default function AdminClient({ clients, reports, adAccounts: initialAccou
               <button onClick={() => setShowCustomizeModal(false)} style={{ padding: '9px 18px', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-mid)' }}>Cancel</button>
               <button onClick={saveCustomize} disabled={loading} style={{ padding: '9px 18px', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', background: 'var(--cyan)', color: 'var(--black)', border: 'none' }}>
                 {loading ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* SHARE ACCOUNT MODAL */}
+      {showShareModal && shareAccount && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }}
+          onClick={e => { if (e.target === e.currentTarget) setShowShareModal(false) }}>
+          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '16px', padding: '28px', width: '420px' }}>
+            <div style={{ fontFamily: 'Syne, sans-serif', fontSize: '18px', fontWeight: 800, marginBottom: '4px' }}>Share Account</div>
+            <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '20px' }}>
+              Copy <strong style={{ color: 'var(--text)' }}>{shareAccount.account_name}</strong> data to additional clients
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
+              {clientsList.filter(c => c.id !== shareAccount.client_id).map(c => {
+                const checked = shareTargets.includes(c.id)
+                return (
+                  <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 14px', background: checked ? 'rgba(0,200,224,0.06)' : 'var(--surface2)', border: `1px solid ${checked ? 'rgba(0,200,224,0.3)' : 'var(--border)'}`, borderRadius: '8px', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={checked}
+                      onChange={e => setShareTargets(prev => e.target.checked ? [...prev, c.id] : prev.filter(id => id !== c.id))}
+                      style={{ width: '16px', height: '16px', accentColor: 'var(--cyan)', cursor: 'pointer' }} />
+                    <div style={{ width: '28px', height: '28px', borderRadius: '7px', background: c.avatar_color || 'var(--cyan)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: '11px', color: '#080c0f', flexShrink: 0 }}>
+                      {c.name?.slice(0, 2).toUpperCase()}
+                    </div>
+                    <span style={{ fontWeight: 500, fontSize: '13px' }}>{c.name}</span>
+                  </label>
+                )
+              })}
+              {clientsList.filter(c => c.id !== shareAccount.client_id).length === 0 && (
+                <div style={{ textAlign: 'center', padding: '20px', color: 'var(--text-muted)', fontSize: '13px' }}>No other clients to share with.</div>
+              )}
+            </div>
+            <div style={{ fontSize: '12px', color: 'var(--text-muted)', padding: '10px 14px', background: 'var(--surface2)', borderRadius: '8px', marginBottom: '20px' }}>
+              ℹ️ Copies all metric data for this account to the selected clients.
+            </div>
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button onClick={() => setShowShareModal(false)} style={{ padding: '9px 18px', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-mid)' }}>Cancel</button>
+              <button onClick={shareToClients} disabled={sharing || !shareTargets.length}
+                style={{ padding: '9px 18px', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', background: shareTargets.length ? 'var(--cyan)' : 'var(--surface3)', color: shareTargets.length ? '#080c0f' : 'var(--text-muted)', border: 'none' }}>
+                {sharing ? 'Sharing...' : `↗ Share to ${shareTargets.length || ''} client${shareTargets.length !== 1 ? 's' : ''}`}
               </button>
             </div>
           </div>
