@@ -177,52 +177,38 @@ export default function AdminClient({ clients, reports, adAccounts: initialAccou
   }
 
   async function toggleAssignment(clientId: string, accountName: string, platform: string, sourceClientId: string) {
-    if (clientId === sourceClientId) return // can't unassign from source
-    const existing = assignments.find(a =>
-      a.client_id === clientId && a.account_name === accountName && a.platform === platform
+    if (clientId === sourceClientId) return
+    const isCurrentlyAssigned = assignments.some(
+      a => a.client_id === clientId && a.account_name === accountName && a.platform === platform
     )
-
-    if (existing) {
-      // Remove assignment + metric data for this client
-      await supabase.from('client_account_assignments')
-        .delete()
-        .eq('client_id', clientId)
-        .eq('account_name', accountName)
-        .eq('platform', platform)
-      await supabase.from('metrics_cache')
-        .delete()
-        .eq('client_id', clientId)
-        .eq('account_name', accountName)
-        .eq('platform', platform)
-      setAssignments(prev => prev.filter(a => !(a.client_id === clientId && a.account_name === accountName && a.platform === platform)))
-    } else {
-      // Copy metrics from source client to this client
-      setLoading(true)
-      const { data: rows } = await supabase
-        .from('metrics_cache')
-        .select('*')
-        .eq('client_id', sourceClientId)
-        .eq('platform', platform)
-        .eq('account_name', accountName)
-
-      if (rows?.length) {
-        const copies = rows.map(({ id, created_at, ad_account_id, ...r }: any) => ({
-          ...r,
+    setLoading(true)
+    try {
+      const res = await fetch('/api/admin/assign-account', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: isCurrentlyAssigned ? 'unassign' : 'assign',
           client_id: clientId,
-          ad_account_id: null,
-        }))
-        await supabase.from('metrics_cache')
-          .upsert(copies, { onConflict: 'client_id,platform,date,account_name' })
+          account_name: accountName,
+          platform,
+          source_client_id: sourceClientId,
+        }),
+      })
+      const data = await res.json()
+      if (data.error) throw new Error(data.error)
+
+      if (isCurrentlyAssigned) {
+        setAssignments(prev => prev.filter(
+          a => !(a.client_id === clientId && a.account_name === accountName && a.platform === platform)
+        ))
+      } else {
+        setAssignments(prev => [...prev, { client_id: clientId, account_name: accountName, platform, source_client_id: sourceClientId }])
       }
-
-      const { data: newAssign } = await supabase.from('client_account_assignments')
-        .insert({ client_id: clientId, account_name: accountName, platform, source_client_id: sourceClientId })
-        .select().single()
-      if (newAssign) setAssignments(prev => [...prev, newAssign])
-      setLoading(false)
+      router.refresh()
+    } catch (e: any) {
+      alert('Error: ' + e.message)
     }
-
-    router.refresh()
+    setLoading(false)
   }
 
   const COLORS_OPTIONS = ['#00C8E0', '#a855f7', '#f97316', '#00e09e', '#ffc53d', '#ff4d6a', '#4285F4']
