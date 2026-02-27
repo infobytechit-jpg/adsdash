@@ -9,23 +9,14 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const { data: { user } } = await supabase.auth.getUser()
 
   if (!user) {
-    // Server can't read session — let client verify and redirect if needed
-    return (
-      <ClientAuthWrapper>
-        {children}
-      </ClientAuthWrapper>
-    )
+    return <ClientAuthWrapper>{children}</ClientAuthWrapper>
   }
 
   const { data: profile } = await supabase
     .from('profiles').select('*').eq('id', user.id).single()
 
   if (!profile) {
-    return (
-      <ClientAuthWrapper>
-        {children}
-      </ClientAuthWrapper>
-    )
+    return <ClientAuthWrapper>{children}</ClientAuthWrapper>
   }
 
   const { data: clients } = await supabase
