@@ -268,9 +268,10 @@ export default function AdminClient({ clients, reports, adAccounts: initialAccou
   const selectedUserData = clientsList.find(c => c.id === selectedUserForAssign)
 
   if (dataLoading) {
+    const spinnerCss = '@keyframes dp{0%,80%,100%{transform:scale(0.6);opacity:0.3}40%{transform:scale(1);opacity:1}}.ld{width:8px;height:8px;border-radius:50%;background:#00C8E0;display:inline-block;animation:dp 1.2s infinite ease-in-out}.ld:nth-child(2){animation-delay:.2s}.ld:nth-child(3){animation-delay:.4s}'
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-        <style>{\`@keyframes dp{0%,80%,100%{transform:scale(0.6);opacity:0.3}40%{transform:scale(1);opacity:1}}.ld{width:8px;height:8px;border-radius:50%;background:#00C8E0;display:inline-block;animation:dp 1.2s infinite ease-in-out}.ld:nth-child(2){animation-delay:.2s}.ld:nth-child(3){animation-delay:.4s}\`}</style>
+        <style dangerouslySetInnerHTML={{ __html: spinnerCss }} />
         <div style={{ display: 'flex', gap: '8px' }}><div className="ld"/><div className="ld"/><div className="ld"/></div>
       </div>
     )
