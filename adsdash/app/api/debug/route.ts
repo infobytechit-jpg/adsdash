@@ -4,7 +4,11 @@ import { cookies } from 'next/headers'
 
 export async function GET() {
   const cookieStore = cookies()
-  const allCookies = cookieStore.getAll().map(c => c.name)
+  const allCookies = cookieStore.getAll().map(c => ({ 
+    name: c.name, 
+    length: c.value.length,
+    preview: c.value.slice(0, 20) + '...'
+  }))
   
   const supabase = createClient()
   const { data: { user }, error } = await supabase.auth.getUser()
@@ -17,6 +21,5 @@ export async function GET() {
     error: error?.message || null,
     profile,
     cookies: allCookies,
-    env_url: process.env.NEXT_PUBLIC_SUPABASE_URL?.slice(0, 30) + '...',
   })
 }
