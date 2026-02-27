@@ -117,7 +117,7 @@ export default function DashboardShell({ profile, clients, children }: Props) {
     setTimeout(() => setPageLoading(false), 600)
   }
 
-  const sp = { profile, clients, navItems, selectedClient, pathname, onNavigate: navigate, onLogout: handleLogout, onClientChange: (id:string) => router.push(`/dashboard?client=${id}`) }
+  const sp = { profile, clients, navItems, selectedClient, pathname, onNavigate: navigate, onLogout: handleLogout, onClientChange: (id: string) => router.push(`/dashboard?client=${id}`) }
 
   return (
     <>

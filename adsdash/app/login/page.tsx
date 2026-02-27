@@ -17,21 +17,11 @@ export default function LoginPage() {
       setError(result.error)
       setLoading(false)
     }
-    // On success, loginAction calls redirect() server-side — no client code needed
   }
 
   return (
-    <div style={{
-      minHeight: '100vh', background: '#080c0f',
-      display: 'flex', flexDirection: 'column',
-      alignItems: 'center', justifyContent: 'center',
-      padding: '20px', position: 'relative',
-    }}>
-      <div style={{
-        width: '100%', maxWidth: '380px',
-        background: '#0e1419', border: '1px solid #1f2d38',
-        borderRadius: '20px', padding: '40px',
-      }}>
+    <div style={{ minHeight: '100vh', background: '#080c0f', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px', position: 'relative' }}>
+      <div style={{ width: '100%', maxWidth: '380px', background: '#0e1419', border: '1px solid #1f2d38', borderRadius: '20px', padding: '40px' }}>
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
           <svg width="56" height="56" viewBox="0 0 56 56" fill="none" style={{ margin: '0 auto 16px', display: 'block' }}>
             <rect width="56" height="56" rx="14" fill="#00C8E0"/>
@@ -67,11 +57,8 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <p style={{ textAlign: 'center', fontSize: '12px', color: '#5a7080', marginTop: '20px' }}>
-          Contact your administrator to get access.
-        </p>
+        <p style={{ textAlign: 'center', fontSize: '12px', color: '#5a7080', marginTop: '20px' }}>Contact your administrator to get access.</p>
       </div>
-
       <div style={{ position: 'fixed', bottom: '20px', left: '24px', fontSize: '11px', color: '#2a3a45', fontWeight: 500 }}>
         © {new Date().getFullYear()} 360DigitalU. All rights reserved.
       </div>

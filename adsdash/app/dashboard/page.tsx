@@ -50,7 +50,7 @@ export default async function DashboardPage({
   if (clientId) {
     const { data: accountData } = await supabase
       .from('metrics_cache').select('account_name')
-      .eq('client_id', clientId).not('account_name','is',null)
+      .eq('client_id', clientId).not('account_name', 'is', null)
     accounts = Array.from(new Set((accountData||[]).map((a:any) => a.account_name).filter(Boolean)))
 
     let q = supabase.from('metrics_cache').select('*')

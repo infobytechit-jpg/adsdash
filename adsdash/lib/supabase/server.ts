@@ -1,29 +1,48 @@
-import { createClient as createSupabaseClient } from '@supabase/supabase-js'
+import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 
 export function createClient() {
   const cookieStore = cookies()
-  const accessToken = cookieStore.get('sb-access-token')?.value
-  const refreshToken = cookieStore.get('sb-refresh-token')?.value
-
-  const client = createSupabaseClient(
+  return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll()
+        },
+        setAll(cookiesToSet) {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, options)
+            )
+          } catch {
+            // Server Components can't set cookies — middleware handles this
+          }
+        },
+      },
+    }
   )
-
-  if (accessToken && refreshToken) {
-    client.auth.setSession({
-      access_token: accessToken,
-      refresh_token: refreshToken,
-    })
-  }
-
-  return client
 }
 
 export function createAdminClient() {
-  return createSupabaseClient(
+  const cookieStore = cookies()
+  return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll()
+        },
+        setAll(cookiesToSet) {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, options)
+            )
+          } catch {}
+        },
+      },
+    }
   )
 }
