@@ -2,6 +2,8 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import DashboardClient from '@/components/DashboardClient'
 
+export const dynamic = 'force-dynamic'
+
 export default async function DashboardPage({
   searchParams,
 }: {
@@ -27,6 +29,7 @@ export default async function DashboardPage({
     clientData = data
     clientId = data?.id
   } else {
+    // Admin with no client selected — pick first
     const { data } = await supabase.from('clients').select('*').order('name').limit(1).single()
     clientData = data
     clientId = data?.id
@@ -57,7 +60,7 @@ export default async function DashboardPage({
       .eq('client_id', clientId)
       .not('account_name', 'is', null)
 
-    accounts = Array.from(new Set((accountData || []).map((a: any) => a.account_name).filter(Boolean)))
+    accounts = [...new Set((accountData || []).map((a: any) => a.account_name).filter(Boolean))]
 
     let metricsQuery = supabase
       .from('metrics_cache')
