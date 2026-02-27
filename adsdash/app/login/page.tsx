@@ -2,17 +2,24 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { useRouter } from 'next/navigation'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [checking, setChecking] = useState(true)
   const supabase = createClient()
+  const router = useRouter()
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) window.location.replace('/dashboard')
+      if (session) {
+        router.replace('/dashboard')
+      } else {
+        setChecking(false)
+      }
     })
   }, [])
 
@@ -20,29 +27,40 @@ export default function LoginPage() {
     e.preventDefault()
     setLoading(true)
     setError('')
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) { setError(error.message); setLoading(false); return }
-    if (data.session) window.location.replace('/dashboard')
+
+    const { error } = await supabase.auth.signInWithPassword({ email, password })
+
+    if (error) {
+      setError(error.message)
+      setLoading(false)
+      return
+    }
+
+    // Give the cookie a moment to be set, then navigate
+    await new Promise(r => setTimeout(r, 300))
+    router.replace('/dashboard')
+    router.refresh()
+  }
+
+  if (checking) {
+    return (
+      <div style={{ minHeight: '100vh', background: '#080c0f', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ color: '#00C8E0', fontSize: '14px' }}>Loading...</div>
+      </div>
+    )
   }
 
   return (
     <div style={{
-      minHeight: '100vh',
-      background: '#080c0f',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: '20px',
-      position: 'relative',
+      minHeight: '100vh', background: '#080c0f',
+      display: 'flex', flexDirection: 'column',
+      alignItems: 'center', justifyContent: 'center',
+      padding: '20px', position: 'relative',
     }}>
       <div style={{
-        width: '100%',
-        maxWidth: '380px',
-        background: '#0e1419',
-        border: '1px solid #1f2d38',
-        borderRadius: '20px',
-        padding: '40px',
+        width: '100%', maxWidth: '380px',
+        background: '#0e1419', border: '1px solid #1f2d38',
+        borderRadius: '20px', padding: '40px',
       }}>
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
           <svg width="56" height="56" viewBox="0 0 56 56" fill="none" style={{ margin: '0 auto 16px', display: 'block' }}>
@@ -61,13 +79,12 @@ export default function LoginPage() {
             <circle cx="19" cy="45" r="2.2" fill="#080c0f" opacity="0.5"/>
             <circle cx="28" cy="45" r="2.2" fill="#080c0f" opacity="0.5"/>
             <circle cx="37" cy="45" r="2.2" fill="#080c0f" opacity="0.5"/>
-            <path d="M19 17 L28 36 L37 17" stroke="#080c0f" strokeWidth="4"
-              strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+            <path d="M19 17 L28 36 L37 17" stroke="#080c0f" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
           </svg>
           <h1 style={{ fontFamily: 'Syne, sans-serif', fontSize: '26px', fontWeight: 800, color: '#e8f0f5', margin: 0 }}>
             Ads<span style={{ color: '#00C8E0' }}>Dash</span>
           </h1>
-          <p style={{ color: '#3a5060', fontSize: '12px', fontWeight: 500, marginTop: '4px', marginBottom: '0', letterSpacing: '0.3px' }}>
+          <p style={{ color: '#3a5060', fontSize: '12px', fontWeight: 500, marginTop: '4px', marginBottom: 0, letterSpacing: '0.3px' }}>
             by 360DigitalU
           </p>
           <p style={{ color: '#5a7080', fontSize: '13px', marginTop: '10px' }}>Sign in to your dashboard</p>
@@ -75,12 +92,12 @@ export default function LoginPage() {
 
         <form onSubmit={handleLogin}>
           <div style={{ marginBottom: '14px' }}>
-            <label htmlFor="email" style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#8ba0ae', marginBottom: '6px' }}>Email</label>
-            <input id="email" name="email" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@company.com" required style={{ width: '100%' }}/>
+            <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#8ba0ae', marginBottom: '6px' }}>Email</label>
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@company.com" required style={{ width: '100%' }}/>
           </div>
           <div style={{ marginBottom: '20px' }}>
-            <label htmlFor="password" style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#8ba0ae', marginBottom: '6px' }}>Password</label>
-            <input id="password" name="password" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" required style={{ width: '100%' }}/>
+            <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#8ba0ae', marginBottom: '6px' }}>Password</label>
+            <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" required style={{ width: '100%' }}/>
           </div>
 
           {error && (
@@ -93,19 +110,13 @@ export default function LoginPage() {
             {loading ? 'Signing in...' : 'Sign in →'}
           </button>
         </form>
-        <p style={{ textAlign: 'center', fontSize: '12px', color: '#5a7080', marginTop: '20px' }}>Contact your administrator to get access.</p>
+
+        <p style={{ textAlign: 'center', fontSize: '12px', color: '#5a7080', marginTop: '20px' }}>
+          Contact your administrator to get access.
+        </p>
       </div>
 
-      {/* Bottom left copyright */}
-      <div style={{
-        position: 'fixed',
-        bottom: '20px',
-        left: '24px',
-        fontSize: '11px',
-        color: '#2a3a45',
-        fontWeight: 500,
-        letterSpacing: '0.3px',
-      }}>
+      <div style={{ position: 'fixed', bottom: '20px', left: '24px', fontSize: '11px', color: '#2a3a45', fontWeight: 500 }}>
         © {new Date().getFullYear()} 360DigitalU. All rights reserved.
       </div>
     </div>

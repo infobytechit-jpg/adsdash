@@ -10,115 +10,54 @@ interface Props {
   children: React.ReactNode
 }
 
-export default function DashboardShell({ profile, clients, children }: Props) {
+const SHELL_STYLES = `
+  :root {
+    --black: #080c0f; --surface: #0e1419; --surface2: #121a21;
+    --surface3: #1a2530; --border: #1f2d38; --cyan: #00C8E0;
+    --green: #00e09e; --yellow: #ffc53d; --red: #ff4d6a;
+    --purple: #a855f7; --text: #e8f0f5; --text-mid: #8ba0ae; --text-muted: #5a7080;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--black); color: var(--text); font-family: 'Inter', -apple-system, sans-serif; }
+  input, select, textarea {
+    width: 100%; background: var(--surface3); border: 1px solid var(--border);
+    color: var(--text); padding: 9px 12px; border-radius: 8px;
+    font-size: 13px; outline: none; font-family: inherit;
+  }
+  input:focus, select:focus { border-color: var(--cyan); }
+  input::placeholder { color: var(--text-muted); }
+  select option { background: var(--surface); }
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  @keyframes dotPulse {
+    0%, 80%, 100% { transform: scale(0.6); opacity: 0.3; }
+    40% { transform: scale(1); opacity: 1; }
+  }
+  .loading-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--cyan); display: inline-block; animation: dotPulse 1.2s infinite ease-in-out; }
+  .loading-dot:nth-child(2) { animation-delay: 0.2s; }
+  .loading-dot:nth-child(3) { animation-delay: 0.4s; }
+  @media (max-width: 768px) {
+    .desktop-sidebar { display: none !important; }
+    .mobile-header { display: flex !important; }
+    .main-content { padding-bottom: 70px !important; }
+  }
+  @media (min-width: 769px) {
+    .mobile-header { display: none !important; }
+    .mobile-nav { display: none !important; }
+  }
+`
+
+// Sidebar is defined OUTSIDE the main component to prevent remounting on every render
+function Sidebar({ profile, clients, navItems, selectedClient, onNavigate, onLogout, onClientChange }: {
+  profile: any; clients: any[]; navItems: any[]; selectedClient: string;
+  onNavigate: (href: string) => void; onLogout: () => void; onClientChange: (id: string) => void;
+}) {
   const pathname = usePathname()
-  const router = useRouter()
-  const searchParams = useSearchParams()
-  const [mobileOpen, setMobileOpen] = useState(false)
-  const [pageLoading, setPageLoading] = useState(false)
-  const supabase = createClient()
-
   const isAdmin = profile?.role === 'admin'
-  const selectedClient = searchParams.get('client') || (clients[0]?.id ?? '')
 
-  async function handleLogout() {
-    await supabase.auth.signOut()
-    window.location.href = '/login'
-  }
-
-  function navigate(href: string) {
-    setPageLoading(true)
-    router.push(href)
-    setMobileOpen(false)
-    setTimeout(() => setPageLoading(false), 600)
-  }
-
-  const navItems = [
-    { href: '/dashboard', label: 'Dashboard', icon: '▦' },
-    ...(isAdmin ? [
-      { href: '/dashboard/upload', label: 'Import Data', icon: '⬆' },
-      { href: '/dashboard/admin', label: 'Admin', icon: '⚙' },
-      { href: '/dashboard/reports', label: 'Reports', icon: '📊' },
-    ] : [
-      { href: '/dashboard/reports', label: 'Reports', icon: '📊' },
-    ]),
-  ]
-
-  const SidebarContent = () => (
+  return (
     <>
-      <style>{`
-        :root {
-          --black: #080c0f;
-          --surface: #0e1419;
-          --surface2: #121a21;
-          --surface3: #1a2530;
-          --border: #1f2d38;
-          --cyan: #00C8E0;
-          --green: #00e09e;
-          --yellow: #ffc53d;
-          --red: #ff4d6a;
-          --purple: #a855f7;
-          --text: #e8f0f5;
-          --text-mid: #8ba0ae;
-          --text-muted: #5a7080;
-        }
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { background: var(--black); color: var(--text); font-family: 'Inter', -apple-system, sans-serif; }
-        input, select, textarea {
-          width: 100%;
-          background: var(--surface3);
-          border: 1px solid var(--border);
-          color: var(--text);
-          padding: 9px 12px;
-          border-radius: 8px;
-          font-size: 13px;
-          outline: none;
-          font-family: inherit;
-        }
-        input:focus, select:focus { border-color: var(--cyan); }
-        input::placeholder { color: var(--text-muted); }
-        select option { background: var(--surface); }
-        ::-webkit-scrollbar { width: 4px; height: 4px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
-        @keyframes bounce {
-          0%, 80%, 100% { transform: scale(0); opacity: 0.3; }
-          40% { transform: scale(1); opacity: 1; }
-        }
-        .loading-dots span {
-          display: inline-block;
-          width: 8px; height: 8px;
-          border-radius: 50%;
-          background: #00C8E0;
-          margin: 0 3px;
-          animation: bounce 1.4s infinite ease-in-out both;
-        }
-        .loading-dots span:nth-child(1) { animation-delay: -0.32s; }
-        .loading-dots span:nth-child(2) { animation-delay: -0.16s; }
-        .loading-dots span:nth-child(3) { animation-delay: 0s; }
-        @media (max-width: 768px) {
-          .desktop-sidebar { display: none !important; }
-          .mobile-header { display: flex !important; }
-          .main-content { padding-bottom: 70px !important; }
-        }
-        @media (min-width: 769px) {
-          .mobile-header { display: none !important; }
-          .mobile-nav { display: none !important; }
-        }
-        @keyframes pageLoad {
-          0% { opacity: 0; transform: translateY(8px); }
-          100% { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes dotPulse {
-          0%, 80%, 100% { transform: scale(0.6); opacity: 0.3; }
-          40% { transform: scale(1); opacity: 1; }
-        }
-        .page-enter { animation: pageLoad 0.25s ease forwards; }
-        .loading-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--cyan); display: inline-block; animation: dotPulse 1.2s infinite ease-in-out; }
-        .loading-dot:nth-child(2) { animation-delay: 0.2s; }
-        .loading-dot:nth-child(3) { animation-delay: 0.4s; }
-      `}</style>
-
       {/* Logo */}
       <div style={{ height: '64px', display: 'flex', alignItems: 'center', padding: '0 20px', borderBottom: '1px solid var(--border)', gap: '10px', flexShrink: 0 }}>
         <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'var(--cyan)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -131,11 +70,11 @@ export default function DashboardShell({ profile, clients, children }: Props) {
         </span>
       </div>
 
-      {/* Client selector (admin only) */}
+      {/* Client selector */}
       {isAdmin && clients.length > 0 && (
         <div style={{ padding: '12px 12px 0' }}>
           <div style={{ fontSize: '10px', fontWeight: 600, letterSpacing: '0.8px', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '6px', paddingLeft: '4px' }}>Client</div>
-          <select value={selectedClient} onChange={e => router.push(`/dashboard?client=${e.target.value}`)} style={{ fontSize: '12px', padding: '7px 10px' }}>
+          <select value={selectedClient} onChange={e => onClientChange(e.target.value)} style={{ fontSize: '12px', padding: '7px 10px' }}>
             {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </div>
@@ -146,7 +85,7 @@ export default function DashboardShell({ profile, clients, children }: Props) {
         {navItems.map(item => {
           const active = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href))
           return (
-            <button key={item.href} onClick={() => navigate(item.href)} style={{
+            <button key={item.href} onClick={() => onNavigate(item.href)} style={{
               width: '100%', display: 'flex', alignItems: 'center', gap: '10px',
               padding: '10px 12px', borderRadius: '8px', border: 'none', cursor: 'pointer', marginBottom: '2px',
               background: active ? 'rgba(0,200,224,0.12)' : 'transparent',
@@ -173,41 +112,81 @@ export default function DashboardShell({ profile, clients, children }: Props) {
             <div style={{ fontSize: '10px', color: 'var(--cyan)', fontWeight: 600 }}>{profile?.role}</div>
           </div>
         </div>
-        <button onClick={handleLogout} style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <button onClick={onLogout} style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span>⎋</span> Sign out
         </button>
       </div>
     </>
   )
+}
+
+export default function DashboardShell({ profile, clients, children }: Props) {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const [mobileOpen, setMobileOpen] = useState(false)
+  const [pageLoading, setPageLoading] = useState(false)
+  const supabase = createClient()
+  const isAdmin = profile?.role === 'admin'
+  const selectedClient = searchParams.get('client') || (clients[0]?.id ?? '')
+
+  const navItems = [
+    { href: '/dashboard', label: 'Dashboard', icon: '▦' },
+    ...(isAdmin ? [
+      { href: '/dashboard/upload', label: 'Import Data', icon: '⬆' },
+      { href: '/dashboard/admin', label: 'Admin', icon: '⚙' },
+      { href: '/dashboard/reports', label: 'Reports', icon: '📊' },
+    ] : [
+      { href: '/dashboard/reports', label: 'Reports', icon: '📊' },
+    ]),
+  ]
+
+  async function handleLogout() {
+    await supabase.auth.signOut()
+    router.replace('/login')
+    router.refresh()
+  }
+
+  function navigate(href: string) {
+    setPageLoading(true)
+    router.push(href)
+    setMobileOpen(false)
+    setTimeout(() => setPageLoading(false), 600)
+  }
+
+  function handleClientChange(id: string) {
+    router.push(`/dashboard?client=${id}`)
+  }
+
+  const sidebarProps = { profile, clients, navItems, selectedClient, onNavigate: navigate, onLogout: handleLogout, onClientChange: handleClientChange }
 
   return (
     <>
+      <style>{SHELL_STYLES}</style>
       <div style={{ display: 'flex', height: '100vh', background: 'var(--black)', overflow: 'hidden' }}>
-        {/* Desktop Sidebar */}
+        {/* Desktop sidebar */}
         <div className="desktop-sidebar" style={{ width: '220px', minWidth: '220px', height: '100vh', background: 'var(--surface)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
-          <SidebarContent />
+          <Sidebar {...sidebarProps} />
         </div>
 
-        {/* Main content */}
+        {/* Main */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
           {/* Mobile header */}
           <div className="mobile-header" style={{ height: '56px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', display: 'none', alignItems: 'center', padding: '0 16px', gap: '12px', flexShrink: 0 }}>
-            <button onClick={() => setMobileOpen(true)} style={{ background: 'none', border: 'none', color: 'var(--text)', cursor: 'pointer', fontSize: '20px', padding: '4px' }}>☰</button>
+            <button onClick={() => setMobileOpen(true)} style={{ background: 'none', border: 'none', color: 'var(--text)', cursor: 'pointer', fontSize: '20px' }}>☰</button>
             <span style={{ fontFamily: 'Syne, sans-serif', fontSize: '16px', fontWeight: 800 }}>Ads<span style={{ color: 'var(--cyan)' }}>Dash</span></span>
           </div>
-
           <div className="main-content" style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
             {children}
           </div>
         </div>
       </div>
 
-      {/* Mobile drawer overlay */}
+      {/* Mobile drawer */}
       {mobileOpen && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 200 }}>
           <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.7)' }} onClick={() => setMobileOpen(false)} />
           <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '260px', background: 'var(--surface)', display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--border)' }}>
-            <SidebarContent />
+            <Sidebar {...sidebarProps} />
           </div>
         </div>
       )}
@@ -215,20 +194,20 @@ export default function DashboardShell({ profile, clients, children }: Props) {
       {/* Mobile bottom nav */}
       <div className="mobile-nav" style={{ position: 'fixed', bottom: 0, left: 0, right: 0, height: '64px', background: 'var(--surface)', borderTop: '1px solid var(--border)', display: 'none', alignItems: 'center', justifyContent: 'space-around', zIndex: 100, padding: '0 8px' }}>
         {navItems.slice(0, 4).map(item => {
-          const active = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href))
+          const isActive = typeof window !== 'undefined' && (window.location.pathname === item.href || (item.href !== '/dashboard' && window.location.pathname.startsWith(item.href)))
           return (
-            <button key={item.href} onClick={() => navigate(item.href)} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px', background: 'none', border: 'none', cursor: 'pointer', padding: '8px 12px', borderRadius: '8px', color: active ? 'var(--cyan)' : 'var(--text-muted)', flex: 1 }}>
+            <button key={item.href} onClick={() => navigate(item.href)} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px', background: 'none', border: 'none', cursor: 'pointer', padding: '8px 12px', borderRadius: '8px', color: isActive ? 'var(--cyan)' : 'var(--text-muted)', flex: 1 }}>
               <span style={{ fontSize: '20px' }}>{item.icon}</span>
-              <span style={{ fontSize: '10px', fontWeight: active ? 600 : 400 }}>{item.label.split(' ')[0]}</span>
+              <span style={{ fontSize: '10px', fontWeight: isActive ? 600 : 400 }}>{item.label.split(' ')[0]}</span>
             </button>
           )
         })}
       </div>
 
-      {/* Page loading overlay */}
+      {/* Loading overlay */}
       {pageLoading && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(8,12,15,0.6)', backdropFilter: 'blur(2px)', pointerEvents: 'none' }}>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '8px' }}>
             <div className="loading-dot" />
             <div className="loading-dot" />
             <div className="loading-dot" />
