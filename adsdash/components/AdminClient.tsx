@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 
@@ -19,8 +19,42 @@ export default function AdminClient({ clients, reports, adAccounts: initialAccou
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
   const [selectedUserForAssign, setSelectedUserForAssign] = useState<string>(clients[0]?.id || '')
+  const [dataLoading, setDataLoading] = useState(clients.length === 0)
   const router = useRouter()
   const supabase = createClient()
+
+  useEffect(() => {
+    if (clients.length > 0) return
+    async function fetchData() {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session) return
+        const [c, r, a, ma, asgn] = await Promise.all([
+          supabase.from('clients').select('*, ad_accounts(id,platform,account_name,is_active)').order('name'),
+          supabase.from('reports').select('*, clients(name)').order('created_at', { ascending: false }).limit(10),
+          supabase.from('ad_accounts').select('*').order('account_name'),
+          supabase.from('metrics_cache').select('client_id,platform,account_name').not('account_name','is',null),
+          supabase.from('client_account_assignments').select('*'),
+        ])
+        const adRows = a.data || []
+        const metricAcc = ma.data || []
+        const existing = new Set(adRows.map((x:any) => `${x.client_id}|${x.platform}|${x.account_name}`))
+        const seen = new Set<string>()
+        const extra = metricAcc
+          .filter((m:any) => m.account_name && !existing.has(`${m.client_id}|${m.platform}|${m.account_name}`))
+          .map((m:any, i:number) => ({ id:`metrics-${m.client_id}-${m.platform}-${i}`, client_id:m.client_id, platform:m.platform, account_name:m.account_name, is_active:true, from_metrics:true }))
+          .filter((x:any) => { const k=`${x.client_id}|${x.platform}|${x.account_name}`; if(seen.has(k)) return false; seen.add(k); return true })
+        const loaded = c.data || []
+        setClientsList(loaded)
+        setAccounts([...adRows, ...extra])
+        setAssignments(asgn.data || [])
+        if (loaded[0]) setSelectedUserForAssign(loaded[0].id)
+      } finally {
+        setDataLoading(false)
+      }
+    }
+    fetchData()
+  }, [])
 
   const [newClient, setNewClient] = useState({ name: '', email: '', password: '', color: '#00C8E0' })
   const [accountForm, setAccountForm] = useState({ client_id: '', platform: 'google', account_name: '', account_id: '' })
@@ -232,6 +266,15 @@ export default function AdminClient({ clients, reports, adAccounts: initialAccou
   accounts.forEach(a => { if (byClient[a.client_id]) byClient[a.client_id].push(a) })
 
   const selectedUserData = clientsList.find(c => c.id === selectedUserForAssign)
+
+  if (dataLoading) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+        <style>{\`@keyframes dp{0%,80%,100%{transform:scale(0.6);opacity:0.3}40%{transform:scale(1);opacity:1}}.ld{width:8px;height:8px;border-radius:50%;background:#00C8E0;display:inline-block;animation:dp 1.2s infinite ease-in-out}.ld:nth-child(2){animation-delay:.2s}.ld:nth-child(3){animation-delay:.4s}\`}</style>
+        <div style={{ display: 'flex', gap: '8px' }}><div className="ld"/><div className="ld"/><div className="ld"/></div>
+      </div>
+    )
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>

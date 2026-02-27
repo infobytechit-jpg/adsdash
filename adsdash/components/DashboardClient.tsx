@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip,
@@ -343,12 +343,54 @@ export default function DashboardClient({ profile: initialProfile, clientData: i
   )
 }
 
+function useCountUp(target: number, duration = 1200) {
+  const [current, setCurrent] = useState(0)
+  const prevTarget = useRef(0)
+
+  useEffect(() => {
+    if (target === prevTarget.current) return
+    prevTarget.current = target
+    if (target === 0) { setCurrent(0); return }
+    const start = Date.now()
+    const from = current
+    function tick() {
+      const elapsed = Date.now() - start
+      const progress = Math.min(elapsed / duration, 1)
+      // Ease out cubic
+      const eased = 1 - Math.pow(1 - progress, 3)
+      setCurrent(Math.round(from + (target - from) * eased))
+      if (progress < 1) requestAnimationFrame(tick)
+    }
+    requestAnimationFrame(tick)
+  }, [target])
+
+  return current
+}
+
 function KpiCard({ label, value, accent, sub }: { label: string; value: string; accent: string; sub: string }) {
+  // Parse numeric value for animation
+  const prefix = value.startsWith('€') ? '€' : ''
+  const suffix = value.endsWith('x') ? 'x' : ''
+  // For ROAS like "3.45x", multiply by 100 to animate as integer, divide back
+  const isDecimal = suffix === 'x' && value.includes('.')
+  const rawStr = value.replace('€','').replace('x','').replace(/\./g,'').replace(/,/g,'.')
+  const raw = isDecimal
+    ? Math.round(parseFloat(value.replace('x','')) * 100)
+    : (parseInt(rawStr.replace(/[^0-9]/g,'')) || 0)
+  const animated = useCountUp(raw)
+
+  function formatAnimated(n: number) {
+    if (isDecimal) return (n / 100).toFixed(2)
+    return new Intl.NumberFormat('it-IT').format(n)
+  }
+
   return (
     <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '20px', position: 'relative', overflow: 'hidden' }}>
       <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '2px', background: accent, opacity: 0.7 }} />
       <div style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.8px', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '10px' }}>{label}</div>
-      <div style={{ fontFamily: 'Syne, sans-serif', fontSize: '28px', fontWeight: 700, letterSpacing: '-1px', marginBottom: '6px' }}>{value}</div>
+      <div style={{ fontFamily: 'Syne, sans-serif', fontSize: '28px', fontWeight: 700, letterSpacing: '-1px', marginBottom: '6px' }}>
+        {prefix}{formatAnimated(animated)}{suffix}
+      </div>
       <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{sub}</div>
     </div>
   )
