@@ -15,7 +15,7 @@ export default function LoginPage() {
     setLoading(true)
     setError('')
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
 
     if (error) {
       setError(error.message)
@@ -23,7 +23,12 @@ export default function LoginPage() {
       return
     }
 
-    window.location.href = '/dashboard'
+    if (data.session) {
+      // Small delay to ensure cookie is written before navigation
+      setTimeout(() => {
+        window.location.href = '/dashboard'
+      }, 500)
+    }
   }
 
   return (
@@ -55,12 +60,14 @@ export default function LoginPage() {
         <form onSubmit={handleLogin}>
           <div style={{ marginBottom: '14px' }}>
             <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#8ba0ae', marginBottom: '6px' }}>Email</label>
-            <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@company.com" required
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+              placeholder="you@company.com" required
               style={{ width: '100%', background: '#1a2530', border: '1px solid #1f2d38', color: '#e8f0f5', padding: '10px 12px', borderRadius: '8px', fontSize: '13px', outline: 'none', fontFamily: 'inherit' }}/>
           </div>
           <div style={{ marginBottom: '20px' }}>
             <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#8ba0ae', marginBottom: '6px' }}>Password</label>
-            <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" required
+            <input type="password" value={password} onChange={e => setPassword(e.target.value)}
+              placeholder="••••••••" required
               style={{ width: '100%', background: '#1a2530', border: '1px solid #1f2d38', color: '#e8f0f5', padding: '10px 12px', borderRadius: '8px', fontSize: '13px', outline: 'none', fontFamily: 'inherit' }}/>
           </div>
 

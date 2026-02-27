@@ -1,7 +1,7 @@
 'use client'
 
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 interface Props {
@@ -48,17 +48,13 @@ const SHELL_STYLES = `
   }
 `
 
-// Sidebar is defined OUTSIDE the main component to prevent remounting on every render
-function Sidebar({ profile, clients, navItems, selectedClient, onNavigate, onLogout, onClientChange }: {
-  profile: any; clients: any[]; navItems: any[]; selectedClient: string;
+function Sidebar({ profile, clients, navItems, selectedClient, pathname, onNavigate, onLogout, onClientChange }: {
+  profile: any; clients: any[]; navItems: any[]; selectedClient: string; pathname: string;
   onNavigate: (href: string) => void; onLogout: () => void; onClientChange: (id: string) => void;
 }) {
-  const pathname = usePathname()
   const isAdmin = profile?.role === 'admin'
-
   return (
     <>
-      {/* Logo */}
       <div style={{ height: '64px', display: 'flex', alignItems: 'center', padding: '0 20px', borderBottom: '1px solid var(--border)', gap: '10px', flexShrink: 0 }}>
         <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'var(--cyan)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
           <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
@@ -70,7 +66,6 @@ function Sidebar({ profile, clients, navItems, selectedClient, onNavigate, onLog
         </span>
       </div>
 
-      {/* Client selector */}
       {isAdmin && clients.length > 0 && (
         <div style={{ padding: '12px 12px 0' }}>
           <div style={{ fontSize: '10px', fontWeight: 600, letterSpacing: '0.8px', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '6px', paddingLeft: '4px' }}>Client</div>
@@ -80,7 +75,6 @@ function Sidebar({ profile, clients, navItems, selectedClient, onNavigate, onLog
         </div>
       )}
 
-      {/* Nav */}
       <nav style={{ flex: 1, padding: '12px 8px', overflowY: 'auto' }}>
         {navItems.map(item => {
           const active = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href))
@@ -99,7 +93,6 @@ function Sidebar({ profile, clients, navItems, selectedClient, onNavigate, onLog
         })}
       </nav>
 
-      {/* Profile + logout */}
       <div style={{ padding: '12px 8px', borderTop: '1px solid var(--border)', flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 12px', marginBottom: '4px' }}>
           <div style={{ width: '30px', height: '30px', borderRadius: '8px', background: profile?.avatar_color || 'var(--cyan)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 800, color: '#080c0f', flexShrink: 0 }}>
@@ -121,11 +114,28 @@ function Sidebar({ profile, clients, navItems, selectedClient, onNavigate, onLog
 }
 
 export default function DashboardShell({ profile, clients, children }: Props) {
+  const pathname = usePathname()
   const router = useRouter()
   const searchParams = useSearchParams()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [pageLoading, setPageLoading] = useState(false)
+  const [ready, setReady] = useState(!!profile)
   const supabase = createClient()
+
+  useEffect(() => {
+    if (!profile) {
+      // Server couldn't read session - check client-side
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (!session) {
+          window.location.href = '/login'
+        } else {
+          // Has session but server didn't see it - reload to let server pick it up
+          window.location.reload()
+        }
+      })
+    }
+  }, [])
+
   const isAdmin = profile?.role === 'admin'
   const selectedClient = searchParams.get('client') || (clients[0]?.id ?? '')
 
@@ -142,8 +152,7 @@ export default function DashboardShell({ profile, clients, children }: Props) {
 
   async function handleLogout() {
     await supabase.auth.signOut()
-    router.replace('/login')
-    router.refresh()
+    window.location.href = '/login'
   }
 
   function navigate(href: string) {
@@ -153,24 +162,37 @@ export default function DashboardShell({ profile, clients, children }: Props) {
     setTimeout(() => setPageLoading(false), 600)
   }
 
-  function handleClientChange(id: string) {
-    router.push(`/dashboard?client=${id}`)
+  if (!ready) {
+    return (
+      <>
+        <style>{SHELL_STYLES}</style>
+        <div style={{ minHeight: '100vh', background: '#080c0f', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <div className="loading-dot" />
+            <div className="loading-dot" />
+            <div className="loading-dot" />
+          </div>
+        </div>
+      </>
+    )
   }
 
-  const sidebarProps = { profile, clients, navItems, selectedClient, onNavigate: navigate, onLogout: handleLogout, onClientChange: handleClientChange }
+  const sidebarProps = {
+    profile, clients, navItems, selectedClient, pathname,
+    onNavigate: navigate,
+    onLogout: handleLogout,
+    onClientChange: (id: string) => router.push(`/dashboard?client=${id}`),
+  }
 
   return (
     <>
       <style>{SHELL_STYLES}</style>
       <div style={{ display: 'flex', height: '100vh', background: 'var(--black)', overflow: 'hidden' }}>
-        {/* Desktop sidebar */}
         <div className="desktop-sidebar" style={{ width: '220px', minWidth: '220px', height: '100vh', background: 'var(--surface)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
           <Sidebar {...sidebarProps} />
         </div>
 
-        {/* Main */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
-          {/* Mobile header */}
           <div className="mobile-header" style={{ height: '56px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', display: 'none', alignItems: 'center', padding: '0 16px', gap: '12px', flexShrink: 0 }}>
             <button onClick={() => setMobileOpen(true)} style={{ background: 'none', border: 'none', color: 'var(--text)', cursor: 'pointer', fontSize: '20px' }}>☰</button>
             <span style={{ fontFamily: 'Syne, sans-serif', fontSize: '16px', fontWeight: 800 }}>Ads<span style={{ color: 'var(--cyan)' }}>Dash</span></span>
@@ -181,7 +203,6 @@ export default function DashboardShell({ profile, clients, children }: Props) {
         </div>
       </div>
 
-      {/* Mobile drawer */}
       {mobileOpen && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 200 }}>
           <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.7)' }} onClick={() => setMobileOpen(false)} />
@@ -191,20 +212,18 @@ export default function DashboardShell({ profile, clients, children }: Props) {
         </div>
       )}
 
-      {/* Mobile bottom nav */}
       <div className="mobile-nav" style={{ position: 'fixed', bottom: 0, left: 0, right: 0, height: '64px', background: 'var(--surface)', borderTop: '1px solid var(--border)', display: 'none', alignItems: 'center', justifyContent: 'space-around', zIndex: 100, padding: '0 8px' }}>
         {navItems.slice(0, 4).map(item => {
-          const isActive = typeof window !== 'undefined' && (window.location.pathname === item.href || (item.href !== '/dashboard' && window.location.pathname.startsWith(item.href)))
+          const active = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href))
           return (
-            <button key={item.href} onClick={() => navigate(item.href)} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px', background: 'none', border: 'none', cursor: 'pointer', padding: '8px 12px', borderRadius: '8px', color: isActive ? 'var(--cyan)' : 'var(--text-muted)', flex: 1 }}>
+            <button key={item.href} onClick={() => navigate(item.href)} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px', background: 'none', border: 'none', cursor: 'pointer', padding: '8px 12px', borderRadius: '8px', color: active ? 'var(--cyan)' : 'var(--text-muted)', flex: 1 }}>
               <span style={{ fontSize: '20px' }}>{item.icon}</span>
-              <span style={{ fontSize: '10px', fontWeight: isActive ? 600 : 400 }}>{item.label.split(' ')[0]}</span>
+              <span style={{ fontSize: '10px', fontWeight: active ? 600 : 400 }}>{item.label.split(' ')[0]}</span>
             </button>
           )
         })}
       </div>
 
-      {/* Loading overlay */}
       {pageLoading && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(8,12,15,0.6)', backdropFilter: 'blur(2px)', pointerEvents: 'none' }}>
           <div style={{ display: 'flex', gap: '8px' }}>

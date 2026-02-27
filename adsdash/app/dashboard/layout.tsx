@@ -1,30 +1,32 @@
-import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import DashboardShell from '@/components/DashboardShell'
 
 export const dynamic = 'force-dynamic'
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const supabase = createClient()
+
+  // Try to get user - if this fails, DashboardShell handles redirect client-side
+  let profile = null
+  let clients: any[] = []
+
   try {
-    const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
 
-    if (!user) redirect('/login')
+    if (user) {
+      const { data: p } = await supabase.from('profiles').select('*').eq('id', user.id).single()
+      profile = p
 
-    const { data: profile } = await supabase
-      .from('profiles').select('*').eq('id', user.id).single()
-
-    if (!profile) redirect('/login')
-
-    const { data: clients } = await supabase
-      .from('clients').select('id, name, avatar_color').order('name')
-
-    return (
-      <DashboardShell profile={profile} clients={clients || []}>
-        {children}
-      </DashboardShell>
-    )
+      const { data: c } = await supabase.from('clients').select('id, name, avatar_color').order('name')
+      clients = c || []
+    }
   } catch {
-    redirect('/login')
+    // Server auth failed — shell will redirect client-side
   }
+
+  return (
+    <DashboardShell profile={profile} clients={clients}>
+      {children}
+    </DashboardShell>
+  )
 }
