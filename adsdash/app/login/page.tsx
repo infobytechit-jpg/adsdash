@@ -1,27 +1,14 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { useRouter } from 'next/navigation'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [checking, setChecking] = useState(true)
   const supabase = createClient()
-  const router = useRouter()
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        router.replace('/dashboard')
-      } else {
-        setChecking(false)
-      }
-    })
-  }, [])
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
@@ -36,18 +23,7 @@ export default function LoginPage() {
       return
     }
 
-    // Give the cookie a moment to be set, then navigate
-    await new Promise(r => setTimeout(r, 300))
-    router.replace('/dashboard')
-    router.refresh()
-  }
-
-  if (checking) {
-    return (
-      <div style={{ minHeight: '100vh', background: '#080c0f', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ color: '#00C8E0', fontSize: '14px' }}>Loading...</div>
-      </div>
-    )
+    window.location.href = '/dashboard'
   }
 
   return (
@@ -65,26 +41,12 @@ export default function LoginPage() {
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
           <svg width="56" height="56" viewBox="0 0 56 56" fill="none" style={{ margin: '0 auto 16px', display: 'block' }}>
             <rect width="56" height="56" rx="14" fill="#00C8E0"/>
-            <circle cx="11" cy="11" r="2.2" fill="#080c0f" opacity="0.5"/>
-            <circle cx="19" cy="11" r="2.2" fill="#080c0f" opacity="0.5"/>
-            <circle cx="28" cy="11" r="2.2" fill="#080c0f" opacity="0.5"/>
-            <circle cx="37" cy="11" r="2.2" fill="#080c0f" opacity="0.5"/>
-            <circle cx="45" cy="11" r="2.2" fill="#080c0f" opacity="0.5"/>
-            <circle cx="11" cy="19" r="2.2" fill="#080c0f" opacity="0.5"/>
-            <circle cx="45" cy="19" r="2.2" fill="#080c0f" opacity="0.5"/>
-            <circle cx="11" cy="28" r="2.2" fill="#080c0f" opacity="0.5"/>
-            <circle cx="45" cy="28" r="2.2" fill="#080c0f" opacity="0.5"/>
-            <circle cx="11" cy="37" r="2.2" fill="#080c0f" opacity="0.5"/>
-            <circle cx="45" cy="37" r="2.2" fill="#080c0f" opacity="0.5"/>
-            <circle cx="19" cy="45" r="2.2" fill="#080c0f" opacity="0.5"/>
-            <circle cx="28" cy="45" r="2.2" fill="#080c0f" opacity="0.5"/>
-            <circle cx="37" cy="45" r="2.2" fill="#080c0f" opacity="0.5"/>
             <path d="M19 17 L28 36 L37 17" stroke="#080c0f" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
           </svg>
           <h1 style={{ fontFamily: 'Syne, sans-serif', fontSize: '26px', fontWeight: 800, color: '#e8f0f5', margin: 0 }}>
             Ads<span style={{ color: '#00C8E0' }}>Dash</span>
           </h1>
-          <p style={{ color: '#3a5060', fontSize: '12px', fontWeight: 500, marginTop: '4px', marginBottom: 0, letterSpacing: '0.3px' }}>
+          <p style={{ color: '#3a5060', fontSize: '12px', fontWeight: 500, marginTop: '4px', marginBottom: 0 }}>
             by 360DigitalU
           </p>
           <p style={{ color: '#5a7080', fontSize: '13px', marginTop: '10px' }}>Sign in to your dashboard</p>
@@ -93,11 +55,13 @@ export default function LoginPage() {
         <form onSubmit={handleLogin}>
           <div style={{ marginBottom: '14px' }}>
             <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#8ba0ae', marginBottom: '6px' }}>Email</label>
-            <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@company.com" required style={{ width: '100%' }}/>
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@company.com" required
+              style={{ width: '100%', background: '#1a2530', border: '1px solid #1f2d38', color: '#e8f0f5', padding: '10px 12px', borderRadius: '8px', fontSize: '13px', outline: 'none', fontFamily: 'inherit' }}/>
           </div>
           <div style={{ marginBottom: '20px' }}>
             <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#8ba0ae', marginBottom: '6px' }}>Password</label>
-            <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" required style={{ width: '100%' }}/>
+            <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" required
+              style={{ width: '100%', background: '#1a2530', border: '1px solid #1f2d38', color: '#e8f0f5', padding: '10px 12px', borderRadius: '8px', fontSize: '13px', outline: 'none', fontFamily: 'inherit' }}/>
           </div>
 
           {error && (
