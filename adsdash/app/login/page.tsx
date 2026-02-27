@@ -1,34 +1,23 @@
 'use client'
 
 import { useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
+import { loginAction } from '@/app/login/actions'
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const supabase = createClient()
+  const [loading, setLoading] = useState(false)
 
-  async function handleLogin(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setLoading(true)
     setError('')
-
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-
-    if (error) {
-      setError(error.message)
+    const formData = new FormData(e.currentTarget)
+    const result = await loginAction(formData)
+    if (result?.error) {
+      setError(result.error)
       setLoading(false)
-      return
     }
-
-    if (data.session) {
-      // Small delay to ensure cookie is written before navigation
-      setTimeout(() => {
-        window.location.href = '/dashboard'
-      }, 500)
-    }
+    // On success, loginAction calls redirect() server-side — no client code needed
   }
 
   return (
@@ -51,23 +40,19 @@ export default function LoginPage() {
           <h1 style={{ fontFamily: 'Syne, sans-serif', fontSize: '26px', fontWeight: 800, color: '#e8f0f5', margin: 0 }}>
             Ads<span style={{ color: '#00C8E0' }}>Dash</span>
           </h1>
-          <p style={{ color: '#3a5060', fontSize: '12px', fontWeight: 500, marginTop: '4px', marginBottom: 0 }}>
-            by 360DigitalU
-          </p>
+          <p style={{ color: '#3a5060', fontSize: '12px', fontWeight: 500, marginTop: '4px', marginBottom: 0 }}>by 360DigitalU</p>
           <p style={{ color: '#5a7080', fontSize: '13px', marginTop: '10px' }}>Sign in to your dashboard</p>
         </div>
 
-        <form onSubmit={handleLogin}>
+        <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: '14px' }}>
             <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#8ba0ae', marginBottom: '6px' }}>Email</label>
-            <input type="email" value={email} onChange={e => setEmail(e.target.value)}
-              placeholder="you@company.com" required
+            <input name="email" type="email" placeholder="you@company.com" required
               style={{ width: '100%', background: '#1a2530', border: '1px solid #1f2d38', color: '#e8f0f5', padding: '10px 12px', borderRadius: '8px', fontSize: '13px', outline: 'none', fontFamily: 'inherit' }}/>
           </div>
           <div style={{ marginBottom: '20px' }}>
             <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#8ba0ae', marginBottom: '6px' }}>Password</label>
-            <input type="password" value={password} onChange={e => setPassword(e.target.value)}
-              placeholder="••••••••" required
+            <input name="password" type="password" placeholder="••••••••" required
               style={{ width: '100%', background: '#1a2530', border: '1px solid #1f2d38', color: '#e8f0f5', padding: '10px 12px', borderRadius: '8px', fontSize: '13px', outline: 'none', fontFamily: 'inherit' }}/>
           </div>
 
