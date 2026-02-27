@@ -2,7 +2,6 @@
 
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
-import { redirect } from 'next/navigation'
 
 export async function loginAction(formData: FormData) {
   const email = formData.get('email') as string
@@ -33,5 +32,6 @@ export async function loginAction(formData: FormData) {
     return { error: error.message }
   }
 
-  redirect('/dashboard')
+  // Do NOT call redirect() here — it cancels the response before cookies are written
+  return { success: true }
 }

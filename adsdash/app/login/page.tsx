@@ -16,6 +16,9 @@ export default function LoginPage() {
     if (result?.error) {
       setError(result.error)
       setLoading(false)
+    } else if (result?.success) {
+      // Cookies are now set — hard navigate to dashboard
+      window.location.href = '/dashboard'
     }
   }
 
