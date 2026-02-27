@@ -60,7 +60,7 @@ export default async function DashboardPage({
       .eq('client_id', clientId)
       .not('account_name', 'is', null)
 
-    accounts = [...new Set((accountData || []).map((a: any) => a.account_name).filter(Boolean))]
+    accounts = Array.from(new Set((accountData || []).map((a: any) => a.account_name).filter(Boolean)))
 
     let metricsQuery = supabase
       .from('metrics_cache')
