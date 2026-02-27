@@ -1,5 +1,5 @@
-import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import ClientAuthWrapper from '@/components/ClientAuthWrapper'
 import DashboardShell from '@/components/DashboardShell'
 
 export const dynamic = 'force-dynamic'
@@ -8,12 +8,25 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
-  if (!user) redirect('/login')
+  if (!user) {
+    // Server can't read session — let client verify and redirect if needed
+    return (
+      <ClientAuthWrapper>
+        {children}
+      </ClientAuthWrapper>
+    )
+  }
 
   const { data: profile } = await supabase
     .from('profiles').select('*').eq('id', user.id).single()
 
-  if (!profile) redirect('/login')
+  if (!profile) {
+    return (
+      <ClientAuthWrapper>
+        {children}
+      </ClientAuthWrapper>
+    )
+  }
 
   const { data: clients } = await supabase
     .from('clients').select('id, name, avatar_color').order('name')

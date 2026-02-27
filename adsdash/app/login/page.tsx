@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { loginAction } from '@/app/login/actions'
+import { createClient } from '@/lib/supabase/client'
 
 export default function LoginPage() {
   const [error, setError] = useState('')
@@ -11,15 +11,22 @@ export default function LoginPage() {
     e.preventDefault()
     setLoading(true)
     setError('')
+
     const formData = new FormData(e.currentTarget)
-    const result = await loginAction(formData)
-    if (result?.error) {
-      setError(result.error)
+    const email = formData.get('email') as string
+    const password = formData.get('password') as string
+
+    const supabase = createClient()
+    const { error } = await supabase.auth.signInWithPassword({ email, password })
+
+    if (error) {
+      setError(error.message)
       setLoading(false)
-    } else if (result?.success) {
-      // Cookies are now set — hard navigate to dashboard
-      window.location.href = '/dashboard'
+      return
     }
+
+    // Success — hard redirect so browser sends fresh cookies to server
+    window.location.href = '/dashboard'
   }
 
   return (
