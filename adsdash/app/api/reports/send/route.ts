@@ -20,6 +20,13 @@ export async function POST(req: Request) {
 
     const fromEmail = process.env.RESEND_FROM_EMAIL || 'reports@360digitalu.com'
 
+    // Format helper
+    const fmt = (n: number, type: string) => {
+      const num = Number(n) || 0
+      const f = new Intl.NumberFormat('it-IT', { minimumFractionDigits: 0, maximumFractionDigits: type === 'x' ? 2 : 0 }).format(num)
+      return type === 'eur' ? '€' + f : type === 'x' ? f + 'x' : f
+    }
+
     // Build report data if not provided
     let data = reportData
     if (!data && reportId) {
@@ -40,13 +47,6 @@ export async function POST(req: Request) {
       }), { spend: 0, conversion_value: 0, conversions: 0, leads: 0, clicks: 0 })
       totals.roas = totals.spend > 0 ? totals.conversion_value / totals.spend : 0
       data = { client, totals, start, end, selMetrics: ['spend', 'conversions', 'roas', 'leads'], byPlatform: {} }
-    }
-
-    // Format helpers
-    function fmt(n: number, type: string) {
-      const num = Number(n) || 0
-      const f = new Intl.NumberFormat('it-IT', { minimumFractionDigits: 0, maximumFractionDigits: type === 'x' ? 2 : 0 }).format(num)
-      return type === 'eur' ? '€' + f : type === 'x' ? f + 'x' : f
     }
 
     const METRIC_DEFS: any[] = [
