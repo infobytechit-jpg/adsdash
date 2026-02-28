@@ -1,17 +1,27 @@
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { NextResponse } from 'next/server'
 
 export async function POST(req: Request) {
   try {
-    const { action, client_id, account_name, platform, source_client_id } = await req.json()
-    const supabase = createClient()
+    const body = await req.json()
 
-    if (action === 'assign') {
+    // Support both naming conventions (UI sends camelCase, normalize here)
+    const action         = body.action
+    const client_id      = body.clientId      || body.client_id
+    const account_name   = body.accountName   || body.account_name
+    const platform       = body.platform
+    const source_client_id = body.sourceClientId || body.source_client_id
+
+    // ✅ Use admin client to bypass RLS
+    const supabase = createAdminClient()
+
+    // Support both action name conventions: 'add'|'assign' and 'remove'|'unassign'
+    if (action === 'assign' || action === 'add') {
       // Copy metric rows from source client to target client
       const { data: rows, error: fetchErr } = await supabase
         .from('metrics_cache')
-        .select('date, spend, impressions, clicks, conversions, conversion_value, leads')
+        .select('date, spend, impressions, clicks, conversions, conversion_value, leads, raw_data')
         .eq('client_id', source_client_id)
         .eq('platform', platform)
         .eq('account_name', account_name)
@@ -31,29 +41,25 @@ export async function POST(req: Request) {
         }))
         for (let i = 0; i < copies.length; i += 100) {
           const batch = copies.slice(i, i + 100)
-          const { error } = await supabase.from('metrics_cache')
+          await supabase.from('metrics_cache')
             .upsert(batch, { onConflict: 'client_id,platform,date,account_name', ignoreDuplicates: false })
-          if (error) {
-            // Fallback: delete then insert
-            for (const row of batch) {
-              await supabase.from('metrics_cache')
-                .delete()
-                .eq('client_id', row.client_id)
-                .eq('platform', row.platform)
-                .eq('date', row.date)
-                .eq('account_name', row.account_name)
-            }
-            await supabase.from('metrics_cache').insert(batch)
-          }
         }
       }
 
-      // Record assignment (ignore if table doesn't exist)
-      await supabase.from('client_account_assignments')
-        .upsert({ client_id, account_name, platform, source_client_id }, { onConflict: 'client_id,account_name,platform' })
+      // Record assignment
+      const { data: assignment } = await supabase
+        .from('client_account_assignments')
+        .upsert(
+          { client_id, account_name, platform, source_client_id },
+          { onConflict: 'client_id,account_name,platform' }
+        )
         .select()
+        .single()
 
-    } else if (action === 'unassign') {
+      revalidatePath('/dashboard', 'layout')
+      return NextResponse.json({ success: true, assignment })
+
+    } else if (action === 'unassign' || action === 'remove') {
       await supabase.from('metrics_cache')
         .delete()
         .eq('client_id', client_id)
@@ -65,10 +71,14 @@ export async function POST(req: Request) {
         .eq('client_id', client_id)
         .eq('account_name', account_name)
         .eq('platform', platform)
+
+      revalidatePath('/dashboard', 'layout')
+      return NextResponse.json({ success: true })
+
+    } else {
+      return NextResponse.json({ error: 'Unknown action: ' + action }, { status: 400 })
     }
 
-    revalidatePath('/dashboard', 'layout')
-    return NextResponse.json({ success: true })
   } catch (err: any) {
     console.error('assign-account error:', err)
     return NextResponse.json({ error: err.message }, { status: 500 })

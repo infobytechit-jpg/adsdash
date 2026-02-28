@@ -75,12 +75,17 @@ function KpiCard({ label, accent, rawValue, displayValue, sub, onDragStart, onDr
 
 export default function DashboardClient({
   profile: initProfile, clientData: initClientData, metrics: initMetrics,
-  campaigns: initCampaigns, period, platform, isAdmin: initIsAdmin,
-  accounts: initAccounts = [], selectedAccount = 'all'
+  campaigns: initCampaigns, period: initPeriod, platform: initPlatform, isAdmin: initIsAdmin,
+  accounts: initAccounts = [], selectedAccount: initSelectedAccount = 'all'
 }: Props) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const supabase = createClient()
+
+  // ✅ Always read live filter values from URL, not stale props
+  const period = searchParams.get('period') || initPeriod || 'week'
+  const platform = searchParams.get('platform') || initPlatform || 'all'
+  const selectedAccount = searchParams.get('account') || initSelectedAccount || 'all'
 
   const [profile, setProfile] = useState(initProfile)
   const [clientData, setClientData] = useState(initClientData)
@@ -89,18 +94,19 @@ export default function DashboardClient({
   const [isAdmin, setIsAdmin] = useState(initIsAdmin)
   const [accounts, setAccounts] = useState(initAccounts)
   const [loading, setLoading] = useState(!initProfile)
+  const [fetching, setFetching] = useState(false)
   const [showMetricPicker, setShowMetricPicker] = useState(false)
   const [dragFrom, setDragFrom] = useState<number | null>(null)
   const [dragTo, setDragTo] = useState<number | null>(null)
 
-  const orderKey = `morder_${initClientData?.id || 'x'}`
-  const [metricOrder, setMetricOrder] = useState<string[]>(() => {
-    return ALL_METRICS.map(m => m.key)
-  })
+  const [metricOrder, setMetricOrder] = useState<string[]>(() => ALL_METRICS.map(m => m.key))
+
+  // ✅ Determine the active clientId (from URL or clientData)
+  const clientId = searchParams.get('client') || initClientData?.id
 
   // Client-side fallback when server auth failed
   useEffect(() => {
-    if (initProfile) return
+    if (initProfile) { setLoading(false); return }
     async function load() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { setLoading(false); return }
@@ -124,33 +130,18 @@ export default function DashboardClient({
       setClientData(cData)
       if (!cId) { setLoading(false); return }
 
-      const end = new Date(), start = new Date()
-      if (period === 'today') start.setHours(0, 0, 0, 0)
-      else if (period === 'week') start.setDate(start.getDate() - 7)
-      else if (period === 'month') start.setDate(1)
-      else start.setFullYear(start.getFullYear() - 1)
-      const s = start.toISOString().split('T')[0], e = end.toISOString().split('T')[0]
-
       const { data: aData } = await supabase.from('metrics_cache').select('account_name').eq('client_id', cId).not('account_name', 'is', null)
       setAccounts(Array.from(new Set((aData || []).map((a: any) => a.account_name).filter(Boolean))))
-
-      let q = supabase.from('metrics_cache').select('*').eq('client_id', cId).gte('date', s).lte('date', e).order('date')
-      if (platform !== 'all') q = q.eq('platform', platform)
-      if (selectedAccount !== 'all') q = q.eq('account_name', selectedAccount)
-      const { data: m } = await q; setMetrics(m || [])
-
-      const { data: camp } = await supabase.from('campaign_metrics').select('*, campaigns(campaign_name,platform,status)').eq('client_id', cId).gte('date', s).lte('date', e)
-      setCampaigns(camp || [])
       setLoading(false)
     }
     load()
   }, [initProfile])
 
-  // ✅ Re-fetch metrics when filters change (fixes filter not working)
+  // ✅ Re-fetch metrics whenever filters OR clientId change
   useEffect(() => {
-    if (!initProfile || !initClientData?.id) return
+    if (!clientId) return
     async function refetch() {
-      const cId = initClientData.id
+      setFetching(true)
       const end = new Date(), start = new Date()
       if (period === 'today') start.setHours(0, 0, 0, 0)
       else if (period === 'week') start.setDate(start.getDate() - 7)
@@ -158,14 +149,22 @@ export default function DashboardClient({
       else start.setFullYear(start.getFullYear() - 1)
       const s = start.toISOString().split('T')[0], e = end.toISOString().split('T')[0]
 
-      let q = supabase.from('metrics_cache').select('*').eq('client_id', cId).gte('date', s).lte('date', e).order('date')
+      // Fetch accounts list too (so account dropdown stays correct)
+      const { data: aData } = await supabase.from('metrics_cache').select('account_name').eq('client_id', clientId).not('account_name', 'is', null)
+      setAccounts(Array.from(new Set((aData || []).map((a: any) => a.account_name).filter(Boolean))))
+
+      let q = supabase.from('metrics_cache').select('*').eq('client_id', clientId).gte('date', s).lte('date', e).order('date')
       if (platform !== 'all') q = q.eq('platform', platform)
       if (selectedAccount !== 'all') q = q.eq('account_name', selectedAccount)
       const { data: m } = await q
       setMetrics(m || [])
+
+      const { data: camp } = await supabase.from('campaign_metrics').select('*, campaigns(campaign_name,platform,status)').eq('client_id', clientId).gte('date', s).lte('date', e)
+      setCampaigns(camp || [])
+      setFetching(false)
     }
     refetch()
-  }, [period, platform, selectedAccount])
+  }, [period, platform, selectedAccount, clientId])
 
   function setParam(key: string, val: string) {
     const p = new URLSearchParams(searchParams.toString())
@@ -280,18 +279,15 @@ export default function DashboardClient({
 
       {/* ── Topbar ── */}
       <div style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)', padding: '0 20px', height: '64px', display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0, minWidth: 0 }}>
-
-        {/* Left: title */}
         <div style={{ flex: '1 1 0', minWidth: 0, overflow: 'hidden' }}>
           <div style={{ fontFamily: 'Syne, sans-serif', fontSize: '18px', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {clientData?.name || 'Dashboard'}
           </div>
           <div style={{ fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-            {noData ? 'No data for this period' : `Google Ads + Meta Ads · ${period} view`}
+            {fetching ? 'Loading…' : noData ? 'No data for this period' : `Google Ads + Meta Ads · ${period} view`}
           </div>
         </div>
 
-        {/* Right: controls */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
           {accounts.length > 0 && (
             <select value={selectedAccount} onChange={e => setParam('account', e.target.value)}
@@ -301,7 +297,6 @@ export default function DashboardClient({
             </select>
           )}
 
-          {/* Period buttons */}
           <div style={{ display: 'flex', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden', flexShrink: 0 }}>
             {([['today', 'Today'], ['week', 'Week'], ['month', 'Month'], ['all', 'All']] as const).map(([p, label]) => (
               <button key={p} onClick={() => setParam('period', p)}
@@ -340,7 +335,8 @@ export default function DashboardClient({
         </div>
       )}
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: '24px 28px' }}>
+      {/* ✅ Subtle loading overlay while refetching */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '24px 28px', opacity: fetching ? 0.5 : 1, transition: 'opacity 0.2s' }}>
 
         {/* Platform pills */}
         <div style={{ display: 'flex', gap: '10px', marginBottom: '24px' }}>
@@ -352,7 +348,7 @@ export default function DashboardClient({
           ))}
         </div>
 
-        {noData && (
+        {noData && !fetching && (
           <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '40px', textAlign: 'center', marginBottom: '24px' }}>
             <div style={{ fontSize: '40px', marginBottom: '12px' }}>📊</div>
             <div style={{ fontFamily: 'Syne, sans-serif', fontSize: '18px', fontWeight: 700, marginBottom: '8px' }}>No data for this period</div>
