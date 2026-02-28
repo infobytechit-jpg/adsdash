@@ -124,6 +124,12 @@ export default function AdminClient({
     { key: 'show_ctr', label: 'CTR', sub: 'Click-through rate' },
   ]
 
+  // ✅ IMPORTANT: attach adAccounts to each client so your UI shows platforms correctly
+  const clientsWithAccounts = clientsList.map((c: any) => ({
+    ...c,
+    ad_accounts: (adAccounts || []).filter((a: any) => a.client_id === c.id),
+  }))
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       {/* Topbar */}
@@ -155,7 +161,7 @@ export default function AdminClient({
         {/* CLIENTS TAB */}
         {activeTab === 'clients' && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
-            {clientsList.map(c => (
+            {clientsWithAccounts.map((c: any) => (
               <div key={c.id} style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '20px', transition: 'border-color 0.2s' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
                   <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: c.avatar_color || '#00C8E0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: '16px', color: '#080c0f', flexShrink: 0 }}>
@@ -166,17 +172,19 @@ export default function AdminClient({
                     <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{c.email}</div>
                   </div>
                 </div>
+
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '16px' }}>
                   {[
                     ['Platforms', c.ad_accounts?.length > 0 ? c.ad_accounts.map((a: any) => a.platform === 'google' ? 'G' : 'M').join(' + ') : 'None'],
                     ['Status', c.is_active ? 'Active' : 'Paused'],
                   ].map(([l, v]) => (
-                    <div key={l} style={{ background: 'var(--surface3)', borderRadius: '8px', padding: '10px 12px' }}>
+                    <div key={String(l)} style={{ background: 'var(--surface3)', borderRadius: '8px', padding: '10px 12px' }}>
                       <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '3px' }}>{l}</div>
-                      <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: '14px' }}>{v}</div>
+                      <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: '14px' }}>{v as any}</div>
                     </div>
                   ))}
                 </div>
+
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <button onClick={() => openCustomize(c)} style={{ flex: 1, padding: '7px 10px', borderRadius: '7px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-mid)' }}>
                     🎛 Customize
@@ -190,6 +198,7 @@ export default function AdminClient({
                 </div>
               </div>
             ))}
+
             {clientsList.length === 0 && (
               <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '60px 20px', color: 'var(--text-muted)' }}>
                 No clients yet. Click "Add Client" to get started.
@@ -212,6 +221,7 @@ export default function AdminClient({
                 ))}
               </div>
             </div>
+
             {reports.map(r => (
               <div key={r.id} style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
@@ -226,6 +236,7 @@ export default function AdminClient({
                 </span>
               </div>
             ))}
+
             {reports.length === 0 && (
               <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>No reports yet.</div>
             )}
@@ -247,8 +258,12 @@ export default function AdminClient({
             ].map(f => (
               <div key={f.key} style={{ marginBottom: '14px' }}>
                 <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-mid)', marginBottom: '6px' }}>{f.label}</label>
-                <input type={f.type} placeholder={f.placeholder} value={(newClient as any)[f.key]}
-                  onChange={e => setNewClient(prev => ({ ...prev, [f.key]: e.target.value }))} />
+                <input
+                  type={f.type}
+                  placeholder={f.placeholder}
+                  value={(newClient as any)[f.key]}
+                  onChange={e => setNewClient(prev => ({ ...prev, [f.key]: e.target.value }))}
+                />
               </div>
             ))}
 
@@ -256,8 +271,19 @@ export default function AdminClient({
               <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-mid)', marginBottom: '8px' }}>Brand Color</label>
               <div style={{ display: 'flex', gap: '8px' }}>
                 {COLORS_OPTIONS.map(col => (
-                  <div key={col} onClick={() => setNewClient(prev => ({ ...prev, color: col }))}
-                    style={{ width: '28px', height: '28px', borderRadius: '50%', background: col, cursor: 'pointer', border: newClient.color === col ? '3px solid white' : '3px solid transparent', transition: 'border 0.15s' }} />
+                  <div
+                    key={col}
+                    onClick={() => setNewClient(prev => ({ ...prev, color: col }))}
+                    style={{
+                      width: '28px',
+                      height: '28px',
+                      borderRadius: '50%',
+                      background: col,
+                      cursor: 'pointer',
+                      border: newClient.color === col ? '3px solid white' : '3px solid transparent',
+                      transition: 'border 0.15s'
+                    }}
+                  />
                 ))}
               </div>
             </div>
