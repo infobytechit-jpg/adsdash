@@ -160,7 +160,7 @@ export default function AdminClient({ clients, reports, adAccounts, assignments 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '16px' }}>
                   {([
                     ['Platforms', c.ad_accounts?.length > 0
-                      ? [...new Set(c.ad_accounts.map((a: any) => a.platform === 'google' ? 'Google' : 'Meta'))].join(' + ')
+                      ? Array.from(new Set(c.ad_accounts.map((a: any) => a.platform === 'google' ? 'Google' : 'Meta'))).join(' + ')
                       : 'None'],
                     ['Status', c.is_active !== false ? 'Active' : 'Paused'],
                   ] as [string, string][]).map(([l, v]) => (
