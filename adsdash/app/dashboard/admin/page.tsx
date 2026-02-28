@@ -1,35 +1,43 @@
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/server'
 import AdminClient from '@/components/AdminClient'
 
 export const dynamic = 'force-dynamic'
 
 export default async function AdminPage() {
-  const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  // ✅ createAdminClient bypasses cookie issues + RLS — always works on server
+  const supabase = createAdminClient()
 
   let clients: any[] = [], reports: any[] = [], allAccounts: any[] = [], assignments: any[] = []
 
-  if (user) {
-    const [c, r, a, ma, asgn] = await Promise.all([
-      supabase.from('clients').select('*, ad_accounts(id,platform,account_name,is_active)').order('name'),
-      supabase.from('reports').select('*, clients(name)').order('created_at', { ascending: false }).limit(10),
-      supabase.from('ad_accounts').select('*').order('account_name'),
-      supabase.from('metrics_cache').select('client_id,platform,account_name').not('account_name','is',null),
-      supabase.from('client_account_assignments').select('*'),
-    ])
-    clients = c.data || []
-    reports = r.data || []
-    assignments = asgn.data || []
-    const adAccountRows = a.data || []
-    const metricAccounts = ma.data || []
-    const existing = new Set(adAccountRows.map((a:any) => `${a.client_id}|${a.platform}|${a.account_name}`))
-    const seen = new Set<string>()
-    const extra = metricAccounts
-      .filter((m:any) => m.account_name && !existing.has(`${m.client_id}|${m.platform}|${m.account_name}`))
-      .map((m:any,i:number) => ({ id:`metrics-${m.client_id}-${m.platform}-${i}`, client_id:m.client_id, platform:m.platform, account_name:m.account_name, is_active:true, from_metrics:true }))
-      .filter((a:any) => { const k=`${a.client_id}|${a.platform}|${a.account_name}`; if(seen.has(k)) return false; seen.add(k); return true })
-    allAccounts = [...adAccountRows, ...extra]
-  }
+  const [c, r, a, ma, asgn] = await Promise.all([
+    supabase.from('clients').select('*, ad_accounts(id,platform,account_name,is_active)').order('name'),
+    supabase.from('reports').select('*, clients(name)').order('created_at', { ascending: false }).limit(50),
+    supabase.from('ad_accounts').select('*').order('account_name'),
+    supabase.from('metrics_cache').select('client_id,platform,account_name').not('account_name','is',null),
+    supabase.from('client_account_assignments').select('*'),
+  ])
+
+  clients = c.data || []
+  reports = r.data || []
+  assignments = asgn.data || []
+
+  const adAccountRows = a.data || []
+  const metricAccounts = ma.data || []
+  const existing = new Set(adAccountRows.map((a: any) => `${a.client_id}|${a.platform}|${a.account_name}`))
+  const seen = new Set<string>()
+  const extra = metricAccounts
+    .filter((m: any) => m.account_name && !existing.has(`${m.client_id}|${m.platform}|${m.account_name}`))
+    .map((m: any, i: number) => ({
+      id: `metrics-${m.client_id}-${m.platform}-${i}`,
+      client_id: m.client_id, platform: m.platform,
+      account_name: m.account_name, is_active: true, from_metrics: true
+    }))
+    .filter((a: any) => {
+      const k = `${a.client_id}|${a.platform}|${a.account_name}`
+      if (seen.has(k)) return false
+      seen.add(k); return true
+    })
+  allAccounts = [...adAccountRows, ...extra]
 
   return <AdminClient clients={clients} reports={reports} adAccounts={allAccounts} assignments={assignments} />
 }
