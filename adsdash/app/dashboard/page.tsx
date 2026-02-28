@@ -1,72 +1,110 @@
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/server'
+import { cookies } from 'next/headers'
+import { createServerClient } from '@supabase/ssr'
 import DashboardClient from '@/components/DashboardClient'
-
-export const dynamic = 'force-dynamic'
 
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: { client?: string; period?: string; platform?: string; account?: string }
+  searchParams: { period?: string; platform?: string; account?: string; client?: string }
 }) {
-  const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const period = searchParams.period || 'week'
+  const platform = searchParams.platform || 'all'
+  const selectedAccount = searchParams.account || 'all'
 
-  let profile = null, clientData = null
-  let metrics: any[] = [], campaigns: any[] = [], accounts: string[] = []
+  try {
+    const cookieStore = cookies()
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      { cookies: { getAll() { return cookieStore.getAll() }, setAll() {} } }
+    )
 
-  if (user) {
-    const { data: p } = await supabase.from('profiles').select('*').eq('id', user.id).single()
-    profile = p
-    const isAdmin = p?.role === 'admin'
+    const { data: { user } } = await supabase.auth.getUser()
+
+    // If server can't read session, render empty shell — DashboardClient handles client-side loading
+    if (!user) {
+      return (
+        <DashboardClient
+          profile={null} clientData={null} metrics={[]} campaigns={[]}
+          period={period} platform={platform} isAdmin={false}
+          accounts={[]} selectedAccount={selectedAccount}
+        />
+      )
+    }
+
+    const admin = createAdminClient()
+    const { data: profile } = await admin.from('profiles').select('*').eq('id', user.id).single()
+    const isAdmin = profile?.role === 'admin'
+
+    // Determine which client to show
     let clientId: string | null = null
+    let clientData: any = null
 
     if (isAdmin && searchParams.client) {
-      clientId = searchParams.client
-      const { data } = await supabase.from('clients').select('*').eq('id', clientId).single()
-      clientData = data
-    } else if (!isAdmin) {
-      const { data } = await supabase.from('clients').select('*').eq('user_id', user.id).single()
+      const { data } = await admin.from('clients').select('*').eq('id', searchParams.client).single()
+      clientData = data; clientId = data?.id
+    } else if (isAdmin) {
+      // Show first client by default
+      const { data } = await admin.from('clients').select('*').order('name').limit(1).single()
       clientData = data; clientId = data?.id
     } else {
-      const { data } = await supabase.from('clients').select('*').order('name').limit(1).single()
+      const { data } = await admin.from('clients').select('*').eq('user_id', user.id).single()
       clientData = data; clientId = data?.id
     }
 
-    if (clientId) {
-      const period = searchParams.period || 'week'
-      const platform = searchParams.platform || 'all'
-      const accountName = searchParams.account || 'all'
-      const endDate = new Date()
-      const startDate = new Date()
-      if (period === 'today') startDate.setHours(0,0,0,0)
-      else if (period === 'week') startDate.setDate(startDate.getDate() - 7)
-      else if (period === 'month') startDate.setDate(1)
-      else startDate.setFullYear(startDate.getFullYear() - 1)
-      const startStr = startDate.toISOString().split('T')[0]
-      const endStr = endDate.toISOString().split('T')[0]
-
-      const { data: ad } = await supabase.from('metrics_cache').select('account_name').eq('client_id', clientId).not('account_name','is',null)
-      accounts = Array.from(new Set((ad||[]).map((a:any) => a.account_name).filter(Boolean)))
-
-      let q = supabase.from('metrics_cache').select('*').eq('client_id', clientId).gte('date', startStr).lte('date', endStr).order('date')
-      if (platform !== 'all') q = q.eq('platform', platform)
-      if (accountName !== 'all') q = q.eq('account_name', accountName)
-      const { data: m } = await q
-      metrics = m || []
-
-      const { data: camp } = await supabase.from('campaign_metrics')
-        .select('*, campaigns(campaign_name,platform,status,platform_campaign_id)')
-        .eq('client_id', clientId).gte('date', startStr).lte('date', endStr)
-      campaigns = camp || []
+    if (!clientId) {
+      return (
+        <DashboardClient
+          profile={profile} clientData={clientData} metrics={[]} campaigns={[]}
+          period={period} platform={platform} isAdmin={isAdmin}
+          accounts={[]} selectedAccount={selectedAccount}
+        />
+      )
     }
-  }
 
-  return (
-    <DashboardClient
-      profile={profile} clientData={clientData} metrics={metrics}
-      campaigns={campaigns} period={searchParams.period || 'week'}
-      platform={searchParams.platform || 'all'} isAdmin={profile?.role === 'admin'}
-      accounts={accounts} selectedAccount={searchParams.account || 'all'}
-    />
-  )
+    // Date range
+    const endDate = new Date()
+    const startDate = new Date()
+    if (period === 'today') startDate.setHours(0, 0, 0, 0)
+    else if (period === 'week') startDate.setDate(startDate.getDate() - 7)
+    else if (period === 'month') startDate.setDate(1)
+    else startDate.setFullYear(startDate.getFullYear() - 1)
+    const startStr = startDate.toISOString().split('T')[0]
+    const endStr = endDate.toISOString().split('T')[0]
+
+    // Available accounts
+    const { data: accData } = await admin
+      .from('metrics_cache').select('account_name').eq('client_id', clientId).not('account_name', 'is', null)
+    const accounts = Array.from(new Set((accData || []).map((a: any) => a.account_name).filter(Boolean))) as string[]
+
+    // Metrics
+    let metricsQ = admin.from('metrics_cache').select('*')
+      .eq('client_id', clientId).gte('date', startStr).lte('date', endStr).order('date')
+    if (platform !== 'all') metricsQ = metricsQ.eq('platform', platform)
+    if (selectedAccount !== 'all') metricsQ = metricsQ.eq('account_name', selectedAccount)
+    const { data: metrics } = await metricsQ
+
+    // Campaigns
+    const { data: campaigns } = await admin
+      .from('campaign_metrics').select('*, campaigns(campaign_name, platform, status)')
+      .eq('client_id', clientId).gte('date', startStr).lte('date', endStr)
+
+    return (
+      <DashboardClient
+        profile={profile} clientData={clientData}
+        metrics={metrics || []} campaigns={campaigns || []}
+        period={period} platform={platform} isAdmin={isAdmin}
+        accounts={accounts} selectedAccount={selectedAccount}
+      />
+    )
+  } catch {
+    return (
+      <DashboardClient
+        profile={null} clientData={null} metrics={[]} campaigns={[]}
+        period={period} platform={platform} isAdmin={false}
+        accounts={[]} selectedAccount={selectedAccount}
+      />
+    )
+  }
 }
