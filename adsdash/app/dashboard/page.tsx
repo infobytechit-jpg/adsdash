@@ -1,6 +1,4 @@
-import { createAdminClient } from '@/lib/supabase/server'
-import { cookies } from 'next/headers'
-import { createServerClient } from '@supabase/ssr'
+import { createAdminClient, getSessionFromCookie } from '@/lib/supabase/server'
 import DashboardClient from '@/components/DashboardClient'
 
 export const dynamic = 'force-dynamic'
@@ -21,18 +19,14 @@ export default async function DashboardPage({ searchParams }: any) {
   )
 
   try {
-    const cookieStore = cookies()
-    const anonClient = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      { cookies: { getAll() { return cookieStore.getAll() }, setAll() {} } }
-    )
-
-    const { data: { user } } = await anonClient.auth.getUser()
-    if (!user) return empty()
+    // ✅ Use our reliable cookie parser instead of createServerClient auth
+    const session = getSessionFromCookie()
+    if (!session) return empty()
 
     const admin = createAdminClient()
-    const { data: profile } = await admin.from('profiles').select('*').eq('id', user.id).single()
+
+    const { data: profile } = await admin
+      .from('profiles').select('*').eq('id', session.userId).single()
     if (!profile) return empty()
 
     const isAdmin = profile.role === 'admin'
@@ -46,13 +40,13 @@ export default async function DashboardPage({ searchParams }: any) {
       const { data } = await admin.from('clients').select('*').order('name').limit(1).single()
       clientData = data; clientId = data?.id
     } else {
-      const { data } = await admin.from('clients').select('*').eq('user_id', user.id).single()
+      const { data } = await admin.from('clients').select('*').eq('user_id', session.userId).single()
       clientData = data; clientId = data?.id
     }
 
     if (!clientId) return (
       <DashboardClient
-        profile={profile} clientData={clientData} metrics={[]} campaigns={[]}
+        profile={profile} clientData={null} metrics={[]} campaigns={[]}
         period={period} platform={platform} isAdmin={isAdmin}
         accounts={[]} selectedAccount={selectedAccount}
       />
