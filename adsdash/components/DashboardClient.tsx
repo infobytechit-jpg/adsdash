@@ -262,9 +262,10 @@ export default function DashboardClient({
   useEffect(() => {
     if (initProfile) { setLoading(false); return }
     async function load() {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { setLoading(false); return }
-      const { data: p } = await supabase.from('profiles').select('*').eq('id', session.user.id).single()
+      // ✅ Use getUser() not getSession() — getSession() reads localStorage which may be empty
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) { setLoading(false); return }
+      const { data: p } = await supabase.from('profiles').select('*').eq('id', user.id).single()
       if (!p) { setLoading(false); return }
       setProfile(p); setIsAdmin(p.role === 'admin')
       const clientParam = searchParams.get('client')
