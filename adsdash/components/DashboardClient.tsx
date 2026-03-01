@@ -279,7 +279,7 @@ export default function DashboardClient({
           cData = data; cId = data?.id
         }
       } else {
-        const { data } = await supabase.from('clients').select('*').eq('user_id', session.user.id).single()
+        const { data } = await supabase.from('clients').select('*').eq('user_id', user.id).single()
         cData = data; cId = data?.id
       }
       setClientData(cData)
