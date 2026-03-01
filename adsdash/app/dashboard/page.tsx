@@ -8,13 +8,14 @@ export const dynamic = 'force-dynamic'
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: { period?: string; platform?: string; account?: string; client?: string; start?: string; end?: string }
+  searchParams: Promise<{ period?: string; platform?: string; account?: string; client?: string; start?: string; end?: string }> | { period?: string; platform?: string; account?: string; client?: string; start?: string; end?: string }
 }) {
-  const period = searchParams.period || 'week'
-  const platform = searchParams.platform || 'all'
-  const selectedAccount = searchParams.account || 'all'
-  const customStart = searchParams.start || ''
-  const customEnd = searchParams.end || ''
+  const sp = await Promise.resolve(searchParams)
+  const period = sp.period || 'week'
+  const platform = sp.platform || 'all'
+  const selectedAccount = sp.account || 'all'
+  const customStart = sp.start || ''
+  const customEnd = sp.end || ''
 
   const empty = (profile: any = null, clientData: any = null, isAdmin = false) => (
     <DashboardClient
@@ -73,8 +74,8 @@ export default async function DashboardPage({
     let clientId: string | null = null
     let clientData: any = null
 
-    if (isAdmin && searchParams.client) {
-      const { data } = await admin.from('clients').select('*').eq('id', searchParams.client).single()
+    if (isAdmin && sp.client) {
+      const { data } = await admin.from('clients').select('*').eq('id', sp.client).single()
       clientData = data; clientId = data?.id
     } else if (isAdmin) {
       const { data } = await admin.from('clients').select('*').order('name').limit(1).single()
