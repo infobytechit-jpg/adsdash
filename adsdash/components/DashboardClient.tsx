@@ -50,7 +50,7 @@ function useCountUp(target: number, duration = 1200) {
   return cur
 }
 
-function KpiCard({ label, accent, rawValue, displayValue, sub, onDragStart, onDragEnter, onDragEnd, dragging }: any) {
+function KpiCard({ label, accent, rawValue, displayValue, sub, delta, onDragStart, onDragEnter, onDragEnd, dragging }: any) {
   const animated = useCountUp(rawValue)
   const isEur = displayValue.startsWith('€')
   const isX = displayValue.endsWith('x')
@@ -68,7 +68,14 @@ function KpiCard({ label, accent, rawValue, displayValue, sub, onDragStart, onDr
         <div style={{ fontSize: '12px', color: 'var(--border)', cursor: 'grab' }}>⠿</div>
       </div>
       <div style={{ fontFamily: 'Syne, sans-serif', fontSize: '28px', fontWeight: 700, letterSpacing: '-1px', marginBottom: '6px' }}>{render(animated)}</div>
-      <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{sub}</div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{sub}</div>
+        {delta && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '3px', fontSize: '11px', fontWeight: 700, color: delta.up ? 'var(--green)' : 'var(--red)', background: delta.up ? 'rgba(0,224,158,0.1)' : 'rgba(255,77,106,0.1)', padding: '2px 7px', borderRadius: '100px' }}>
+            {delta.up ? '↑' : '↓'} {delta.pct}%
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -377,6 +384,60 @@ export default function DashboardClient({
     setDragFrom(null); setDragTo(null)
   }
 
+  // ── Previous period totals for delta calculation ──
+  const [prevTotals, setPrevTotals] = useState<any>(null)
+  useEffect(() => {
+    if (!clientId) return
+    async function fetchPrev() {
+      const end = new Date(), start = new Date()
+      let pStart: Date, pEnd: Date
+      if (period === 'today') {
+        pEnd = new Date(); pEnd.setHours(0,0,0,0); pEnd.setSeconds(-1)
+        pStart = new Date(pEnd); pStart.setHours(0,0,0,0); pStart.setDate(pStart.getDate()-1)
+      } else if (period === 'week') {
+        pEnd = new Date(); pEnd.setDate(pEnd.getDate()-7)
+        pStart = new Date(pEnd); pStart.setDate(pStart.getDate()-7)
+      } else if (period === 'month') {
+        pEnd = new Date(); pEnd.setDate(0) // last day of prev month
+        pStart = new Date(pEnd.getFullYear(), pEnd.getMonth(), 1)
+      } else if (period === 'custom' && customStart && customEnd) {
+        const diff = new Date(customEnd).getTime() - new Date(customStart).getTime()
+        pEnd = new Date(new Date(customStart).getTime() - 86400000)
+        pStart = new Date(pEnd.getTime() - diff)
+      } else {
+        setPrevTotals(null); return
+      }
+      const s = pStart.toISOString().split('T')[0]
+      const e = pEnd.toISOString().split('T')[0]
+      let q = supabase.from('metrics_cache').select('spend,conversions,leads,clicks,impressions,conversion_value')
+        .eq('client_id', clientId).gte('date', s).lte('date', e)
+      if (platform !== 'all') q = q.eq('platform', platform)
+      if (selectedAccount !== 'all') q = q.eq('account_name', selectedAccount)
+      const { data } = await q
+      if (!data?.length) { setPrevTotals(null); return }
+      const t = data.reduce((a: any, m: any) => ({
+        spend: a.spend + Number(m.spend||0),
+        conversions: a.conversions + Number(m.conversions||0),
+        leads: a.leads + Number(m.leads||0),
+        clicks: a.clicks + Number(m.clicks||0),
+        impressions: a.impressions + Number(m.impressions||0),
+        conversion_value: a.conversion_value + Number(m.conversion_value||0),
+      }), { spend:0, conversions:0, leads:0, clicks:0, impressions:0, conversion_value:0 })
+      t.roas = t.spend > 0 ? t.conversion_value / t.spend : 0
+      setPrevTotals(t)
+    }
+    fetchPrev()
+  }, [period, platform, selectedAccount, clientId, customStart, customEnd])
+
+  function getDelta(key: string): { pct: number; up: boolean } | null {
+    if (!prevTotals) return null
+    const cur = allTotals[key] || 0
+    const prev = prevTotals[key] || 0
+    if (prev === 0) return null
+    const pct = ((cur - prev) / prev) * 100
+    return { pct: Math.abs(Math.round(pct)), up: pct >= 0 }
+  }
+
   const totals = useMemo(() => metrics.reduce((a, m) => ({
     spend: a.spend + Number(m.spend || 0),
     conversions: a.conversions + Number(m.conversions || 0),
@@ -565,6 +626,7 @@ export default function DashboardClient({
                   rawValue={getRaw(m.key, val)}
                   displayValue={doFmt(val, m.fmt)}
                   sub={getSub(m.key)}
+                  delta={getDelta(m.key)}
                   dragging={dragFrom === i}
                   onDragStart={() => setDragFrom(i)}
                   onDragEnter={() => setDragTo(i)}
