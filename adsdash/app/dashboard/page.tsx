@@ -5,30 +5,23 @@ import DashboardClient from '@/components/DashboardClient'
 
 export const dynamic = 'force-dynamic'
 
-export default async function DashboardPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ period?: string; platform?: string; account?: string; client?: string; start?: string; end?: string }> | { period?: string; platform?: string; account?: string; client?: string; start?: string; end?: string }
-}) {
-  const sp = await Promise.resolve(searchParams)
-  const period = sp.period || 'week'
-  const platform = sp.platform || 'all'
-  const selectedAccount = sp.account || 'all'
-  const customStart = sp.start || ''
-  const customEnd = sp.end || ''
+export default async function DashboardPage({ searchParams }: any) {
+  const period = searchParams?.period || 'week'
+  const platform = searchParams?.platform || 'all'
+  const selectedAccount = searchParams?.account || 'all'
+  const customStart = searchParams?.start || ''
+  const customEnd = searchParams?.end || ''
 
-  const empty = (profile: any = null, clientData: any = null, isAdmin = false) => (
+  const empty = () => (
     <DashboardClient
-      profile={profile} clientData={clientData} metrics={[]} campaigns={[]}
-      period={period} platform={platform} isAdmin={isAdmin}
+      profile={null} clientData={null} metrics={[]} campaigns={[]}
+      period={period} platform={platform} isAdmin={false}
       accounts={[]} selectedAccount={selectedAccount}
     />
   )
 
   try {
     const cookieStore = cookies()
-
-    // ✅ Try to get user from cookie session
     const anonClient = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -36,63 +29,40 @@ export default async function DashboardPage({
     )
 
     const { data: { user } } = await anonClient.auth.getUser()
-
-    // ✅ If no user from cookie, try getting from admin client via all cookies
-    // This handles edge cases where cookie format differs
-    let userId: string | null = user?.id || null
-
-    if (!userId) {
-      // Last resort: check all cookies for supabase session
-      const allCookies = cookieStore.getAll()
-      const sessionCookie = allCookies.find(c =>
-        c.name.includes('auth-token') || c.name.includes('session')
-      )
-      if (sessionCookie) {
-        try {
-          const parsed = JSON.parse(decodeURIComponent(sessionCookie.value))
-          userId = parsed?.user?.id || parsed?.id || null
-        } catch {}
-      }
-    }
-
-    if (!userId) {
-      // No session found server-side — return empty, DashboardClient will load client-side
-      return empty()
-    }
+    if (!user) return empty()
 
     const admin = createAdminClient()
-
-    // Get profile using admin client (bypasses RLS)
-    const { data: profile } = await admin
-      .from('profiles').select('*').eq('id', userId).single()
-
+    const { data: profile } = await admin.from('profiles').select('*').eq('id', user.id).single()
     if (!profile) return empty()
 
     const isAdmin = profile.role === 'admin'
-
-    // Determine client
     let clientId: string | null = null
     let clientData: any = null
 
-    if (isAdmin && sp.client) {
-      const { data } = await admin.from('clients').select('*').eq('id', sp.client).single()
+    if (isAdmin && searchParams?.client) {
+      const { data } = await admin.from('clients').select('*').eq('id', searchParams.client).single()
       clientData = data; clientId = data?.id
     } else if (isAdmin) {
       const { data } = await admin.from('clients').select('*').order('name').limit(1).single()
       clientData = data; clientId = data?.id
     } else {
-      // ✅ For client users: look up by user_id
-      const { data } = await admin.from('clients').select('*').eq('user_id', userId).single()
+      const { data } = await admin.from('clients').select('*').eq('user_id', user.id).single()
       clientData = data; clientId = data?.id
     }
 
-    if (!clientId) return empty(profile, clientData, isAdmin)
+    if (!clientId) return (
+      <DashboardClient
+        profile={profile} clientData={clientData} metrics={[]} campaigns={[]}
+        period={period} platform={platform} isAdmin={isAdmin}
+        accounts={[]} selectedAccount={selectedAccount}
+      />
+    )
 
     // Date range
+    let startStr: string, endStr: string
     const endDate = new Date()
     const startDate = new Date()
 
-    let startStr: string, endStr: string
     if (period === 'custom' && customStart && customEnd) {
       startStr = customStart
       endStr = customEnd
@@ -105,46 +75,32 @@ export default async function DashboardPage({
       endStr = endDate.toISOString().split('T')[0]
     }
 
-    // Available accounts
+    // Accounts
     const { data: accData } = await admin
-      .from('metrics_cache')
-      .select('account_name')
-      .eq('client_id', clientId)
-      .not('account_name', 'is', null)
-
+      .from('metrics_cache').select('account_name')
+      .eq('client_id', clientId).not('account_name', 'is', null)
     const accounts = Array.from(new Set(
       (accData || []).map((a: any) => a.account_name).filter(Boolean)
     )) as string[]
 
     // Metrics
     let metricsQ = admin.from('metrics_cache').select('*')
-      .eq('client_id', clientId)
-      .gte('date', startStr)
-      .lte('date', endStr)
-      .order('date')
+      .eq('client_id', clientId).gte('date', startStr).lte('date', endStr).order('date')
     if (platform !== 'all') metricsQ = metricsQ.eq('platform', platform)
     if (selectedAccount !== 'all') metricsQ = metricsQ.eq('account_name', selectedAccount)
     const { data: metrics } = await metricsQ
 
     // Campaigns
     const { data: campaigns } = await admin
-      .from('campaign_metrics')
-      .select('*, campaigns(campaign_name, platform, status)')
-      .eq('client_id', clientId)
-      .gte('date', startStr)
-      .lte('date', endStr)
+      .from('campaign_metrics').select('*, campaigns(campaign_name, platform, status)')
+      .eq('client_id', clientId).gte('date', startStr).lte('date', endStr)
 
     return (
       <DashboardClient
-        profile={profile}
-        clientData={clientData}
-        metrics={metrics || []}
-        campaigns={campaigns || []}
-        period={period}
-        platform={platform}
-        isAdmin={isAdmin}
-        accounts={accounts}
-        selectedAccount={selectedAccount}
+        profile={profile} clientData={clientData}
+        metrics={metrics || []} campaigns={campaigns || []}
+        period={period} platform={platform} isAdmin={isAdmin}
+        accounts={accounts} selectedAccount={selectedAccount}
       />
     )
   } catch (err) {
