@@ -28,8 +28,21 @@ const STYLES = `
   @keyframes dotPulse{0%,80%,100%{transform:scale(0.6);opacity:0.3;}40%{transform:scale(1);opacity:1;}}
   .ld{width:8px;height:8px;border-radius:50%;background:var(--cyan);display:inline-block;animation:dotPulse 1.2s infinite ease-in-out;}
   .ld:nth-child(2){animation-delay:0.2s;}.ld:nth-child(3){animation-delay:0.4s;}
-  @media(max-width:768px){.dsb{display:none!important;}.mhd{display:flex!important;}.mc{padding-bottom:70px!important;}}
-  @media(min-width:769px){.mhd{display:none!important;}.mnv{display:none!important;}}
+
+  /* Desktop sidebar visible, mobile nav hidden */
+  @media(min-width:769px){
+    .sidebar{display:flex!important;}
+    .mobile-header{display:none!important;}
+    .mobile-nav{display:none!important;}
+    .main-content{padding-bottom:0!important;}
+  }
+  /* Mobile: hide sidebar, show header + bottom nav */
+  @media(max-width:768px){
+    .sidebar{display:none!important;}
+    .mobile-header{display:flex!important;}
+    .mobile-nav{display:flex!important;}
+    .main-content{padding-bottom:64px!important;}
+  }
 `
 
 function Sidebar({ profile, clients, navItems, selectedClient, pathname, onNavigate, onLogout, onClientChange }: any) {
@@ -117,26 +130,46 @@ export default function DashboardShell({ profile, clients, children }: Props) {
     setTimeout(() => setPageLoading(false), 600)
   }
 
-  const sp = { profile, clients, navItems, selectedClient, pathname, onNavigate: navigate, onLogout: handleLogout, onClientChange: (id: string) => router.push(`/dashboard?client=${id}`) }
+  const sp = {
+    profile, clients, navItems, selectedClient, pathname,
+    onNavigate: navigate, onLogout: handleLogout,
+    onClientChange: (id: string) => router.push(`/dashboard?client=${id}`)
+  }
 
   return (
     <>
       <style>{STYLES}</style>
       <div style={{display:'flex',height:'100vh',background:'var(--black)',overflow:'hidden'}}>
-        <div className="dsb" style={{width:'220px',minWidth:'220px',height:'100vh',background:'var(--surface)',borderRight:'1px solid var(--border)',display:'flex',flexDirection:'column',flexShrink:0}}>
+
+        {/* ── Desktop Sidebar ── */}
+        <div className="sidebar" style={{width:'220px',minWidth:'220px',height:'100vh',background:'var(--surface)',borderRight:'1px solid var(--border)',flexDirection:'column',flexShrink:0}}>
           <Sidebar {...sp}/>
         </div>
+
+        {/* ── Main area ── */}
         <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',minWidth:0}}>
-          <div className="mhd" style={{height:'56px',background:'var(--surface)',borderBottom:'1px solid var(--border)',display:'none',alignItems:'center',padding:'0 16px',gap:'12px',flexShrink:0}}>
-            <button onClick={() => setMobileOpen(true)} style={{background:'none',border:'none',color:'var(--text)',cursor:'pointer',fontSize:'20px'}}>☰</button>
-            <span style={{fontFamily:'Syne,sans-serif',fontSize:'16px',fontWeight:800}}>Ads<span style={{color:'var(--cyan)'}}>Dash</span></span>
+
+          {/* Mobile top header */}
+          <div className="mobile-header" style={{height:'56px',background:'var(--surface)',borderBottom:'1px solid var(--border)',alignItems:'center',padding:'0 16px',gap:'12px',flexShrink:0}}>
+            <button onClick={() => setMobileOpen(true)} style={{background:'none',border:'none',color:'var(--text)',cursor:'pointer',fontSize:'22px',lineHeight:1,padding:'4px',flexShrink:0}}>☰</button>
+            <span style={{fontFamily:'Syne,sans-serif',fontSize:'16px',fontWeight:800,flex:1}}>Ads<span style={{color:'var(--cyan)'}}>Dash</span></span>
+            {/* Client switcher in mobile header for admin */}
+            {isAdmin && clients.length > 0 && (
+              <select value={selectedClient} onChange={e => router.push(`/dashboard?client=${e.target.value}`)}
+                style={{fontSize:'12px',padding:'5px 8px',maxWidth:'130px',width:'auto'}}>
+                {clients.map((c:any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            )}
           </div>
-          <div className="mc" style={{flex:1,overflow:'hidden',display:'flex',flexDirection:'column'}}>
+
+          {/* Page content */}
+          <div className="main-content" style={{flex:1,overflow:'hidden',display:'flex',flexDirection:'column'}}>
             {children}
           </div>
         </div>
       </div>
 
+      {/* Mobile drawer overlay */}
       {mobileOpen && (
         <div style={{position:'fixed',inset:0,zIndex:200}}>
           <div style={{position:'absolute',inset:0,background:'rgba(0,0,0,0.7)'}} onClick={() => setMobileOpen(false)}/>
@@ -146,18 +179,21 @@ export default function DashboardShell({ profile, clients, children }: Props) {
         </div>
       )}
 
-      <div className="mnv" style={{position:'fixed',bottom:0,left:0,right:0,height:'64px',background:'var(--surface)',borderTop:'1px solid var(--border)',display:'none',alignItems:'center',justifyContent:'space-around',zIndex:100,padding:'0 8px'}}>
+      {/* Mobile bottom nav */}
+      <div className="mobile-nav" style={{position:'fixed',bottom:0,left:0,right:0,height:'64px',background:'var(--surface)',borderTop:'1px solid var(--border)',alignItems:'center',justifyContent:'space-around',zIndex:100,padding:'0 4px'}}>
         {navItems.slice(0,4).map(item => {
           const active = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href))
           return (
-            <button key={item.href} onClick={() => navigate(item.href)} style={{display:'flex',flexDirection:'column',alignItems:'center',gap:'3px',background:'none',border:'none',cursor:'pointer',padding:'8px 12px',color:active?'var(--cyan)':'var(--text-muted)',flex:1}}>
+            <button key={item.href} onClick={() => navigate(item.href)}
+              style={{display:'flex',flexDirection:'column',alignItems:'center',gap:'3px',background:'none',border:'none',cursor:'pointer',padding:'8px 4px',color:active?'var(--cyan)':'var(--text-muted)',flex:1,minWidth:0}}>
               <span style={{fontSize:'20px'}}>{item.icon}</span>
-              <span style={{fontSize:'10px',fontWeight:active?600:400}}>{item.label.split(' ')[0]}</span>
+              <span style={{fontSize:'10px',fontWeight:active?600:400,whiteSpace:'nowrap'}}>{item.label.split(' ')[0]}</span>
             </button>
           )
         })}
       </div>
 
+      {/* Page transition loader */}
       {pageLoading && (
         <div style={{position:'fixed',inset:0,zIndex:300,display:'flex',alignItems:'center',justifyContent:'center',background:'rgba(8,12,15,0.6)',backdropFilter:'blur(2px)',pointerEvents:'none'}}>
           <div style={{display:'flex',gap:'8px'}}><div className="ld"/><div className="ld"/><div className="ld"/></div>

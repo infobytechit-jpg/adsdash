@@ -38,9 +38,8 @@ export default function UploadClient({ clients, adAccounts: initialAccounts }: P
   const filteredAccounts = adAccounts.filter(a => a.client_id === clientId && a.platform === platform)
 
   function getAccountName(): string {
-    if (selectedAccountId && selectedAccountId !== 'new') {
+    if (selectedAccountId && selectedAccountId !== 'new')
       return adAccounts.find(a => a.id === selectedAccountId)?.account_name || 'Default'
-    }
     return newAccountName.trim() || 'Default'
   }
 
@@ -188,25 +187,28 @@ export default function UploadClient({ clients, adAccounts: initialAccounts }: P
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      <div style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)', padding: '0 20px', height: '64px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
-        <div>
-          <div style={{ fontFamily: 'Syne, sans-serif', fontSize: '20px', fontWeight: 700 }}>Import Data</div>
-          <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Add data manually or upload a CSV</div>
+
+      {/* Header */}
+      <div style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)', padding: '0 16px', height: '64px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, gap: '12px' }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontFamily: 'Syne, sans-serif', fontSize: '18px', fontWeight: 700 }}>Import Data</div>
+          <div style={{ fontSize: '12px', color: 'var(--text-muted)', display: 'none' }} className="desk-sub">Add data manually or upload a CSV</div>
         </div>
-        <div style={{ display: 'flex', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden' }}>
+        <div style={{ display: 'flex', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden', flexShrink: 0 }}>
           {(['manual', 'csv'] as const).map(m => (
             <button key={m} onClick={() => { setMode(m); setError(''); setSuccess('') }}
-              style={{ padding: '8px 16px', fontSize: '12px', fontWeight: 600, border: 'none', cursor: 'pointer', background: mode === m ? 'var(--cyan)' : 'transparent', color: mode === m ? '#080c0f' : 'var(--text-muted)' }}>
-              {m === 'manual' ? '✏️ Manual' : '📂 CSV Import'}
+              style={{ padding: '8px 14px', fontSize: '12px', fontWeight: 600, border: 'none', cursor: 'pointer', background: mode === m ? 'var(--cyan)' : 'transparent', color: mode === m ? '#080c0f' : 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+              {m === 'manual' ? '✏️ Manual' : '📂 CSV'}
             </button>
           ))}
         </div>
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: '24px 20px' }}>
-        <div style={{ maxWidth: '700px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '16px' }}>
+        <div style={{ maxWidth: '700px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '14px' }}>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+          {/* Client + Platform — stack on mobile */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px' }}>
             <div>
               <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-mid)', marginBottom: '6px' }}>Client *</label>
               <select value={clientId} onChange={e => handleClientChange(e.target.value)}>
@@ -222,7 +224,8 @@ export default function UploadClient({ clients, adAccounts: initialAccounts }: P
             </div>
           </div>
 
-          <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px' }}>
+          {/* Ad Account */}
+          <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '14px' }}>
             <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '10px' }}>Ad Account</div>
             <select value={selectedAccountId} onChange={e => { setSelectedAccountId(e.target.value); if (e.target.value !== 'new') setNewAccountName('') }}>
               <option value="">— Select or create account —</option>
@@ -236,22 +239,25 @@ export default function UploadClient({ clients, adAccounts: initialAccounts }: P
             )}
           </div>
 
+          {/* ── MANUAL MODE ── */}
           {mode === 'manual' && (
             <>
+              {/* Daily / Range toggle */}
               <div style={{ display: 'flex', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden', alignSelf: 'flex-start' }}>
                 {(['daily', 'range'] as const).map(m => (
                   <button key={m} onClick={() => { setManualMode(m); setError(''); setSuccess('') }}
-                    style={{ padding: '8px 18px', fontSize: '12px', fontWeight: 600, border: 'none', cursor: 'pointer', background: manualMode === m ? 'var(--cyan)' : 'transparent', color: manualMode === m ? '#080c0f' : 'var(--text-muted)' }}>
-                    {m === 'daily' ? '📅 By Day' : '📆 Date Range'}
+                    style={{ padding: '8px 16px', fontSize: '12px', fontWeight: 600, border: 'none', cursor: 'pointer', background: manualMode === m ? 'var(--cyan)' : 'transparent', color: manualMode === m ? '#080c0f' : 'var(--text-muted)' }}>
+                    {m === 'daily' ? '📅 By Day' : '📆 Range'}
                   </button>
                 ))}
               </div>
 
+              {/* Range mode */}
               {manualMode === 'range' && (
-                <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '20px' }}>
+                <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px' }}>
                   <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '4px' }}>Monthly / Period Totals</div>
-                  <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '16px' }}>Totals distributed evenly across all days in range</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
+                  <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '14px' }}>Distributed evenly across all days</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px', marginBottom: '12px' }}>
                     <div>
                       <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-mid)', marginBottom: '6px' }}>Start Date *</label>
                       <input type="date" value={rangeStart} onChange={e => setRangeStart(e.target.value)} />
@@ -261,11 +267,11 @@ export default function UploadClient({ clients, adAccounts: initialAccounts }: P
                       <input type="date" value={rangeEnd} onChange={e => setRangeEnd(e.target.value)} />
                     </div>
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px' }}>
                     {[['rangeSpend', rangeSpend, setRangeSpend, 'Total Spend (€) *', '0.00'],
-                      ['rangeConvValue', rangeConvValue, setRangeConvValue, 'Total Conv. Value (€)', '0.00'],
-                      ['rangeConversions', rangeConversions, setRangeConversions, 'Total Conversions', '0'],
-                      ['rangeLeads', rangeLeads, setRangeLeads, 'Total Leads', '0']
+                      ['rangeConvValue', rangeConvValue, setRangeConvValue, 'Conv. Value (€)', '0.00'],
+                      ['rangeConversions', rangeConversions, setRangeConversions, 'Conversions', '0'],
+                      ['rangeLeads', rangeLeads, setRangeLeads, 'Leads', '0']
                     ].map(([key, val, setter, label, placeholder]) => (
                       <div key={key as string}>
                         <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-mid)', marginBottom: '6px' }}>{label as string}</label>
@@ -275,59 +281,109 @@ export default function UploadClient({ clients, adAccounts: initialAccounts }: P
                   </div>
                   {rangeDays > 0 && (
                     <div style={{ marginTop: '12px', padding: '10px 14px', background: 'rgba(0,200,224,0.06)', border: '1px solid rgba(0,200,224,0.2)', borderRadius: '8px', fontSize: '12px', color: 'var(--text-mid)' }}>
-                      ℹ️ Will create {rangeDays} daily records ({rangeStart} → {rangeEnd})
+                      ℹ️ {rangeDays} daily records ({rangeStart} → {rangeEnd})
                     </div>
                   )}
                 </div>
               )}
 
+              {/* Daily mode — card per row on mobile instead of table */}
               {manualMode === 'daily' && (
                 <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
                   <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div style={{ fontSize: '13px', fontWeight: 700 }}>Daily Metrics</div>
                     <button onClick={addRow} style={{ padding: '4px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', background: 'rgba(0,200,224,0.1)', border: '1px solid rgba(0,200,224,0.3)', color: 'var(--cyan)' }}>＋ Add row</button>
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr 1fr 1fr 1fr 32px', gap: '8px', padding: '8px 16px', background: 'var(--surface3)', borderBottom: '1px solid var(--border)' }}>
-                    {['Date', 'Spend (€)', 'Conv. Value (€)', 'Conversions', 'Leads', ''].map(h => (
-                      <div key={h} style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{h}</div>
+
+                  {/* Desktop table view */}
+                  <div style={{ display: 'none' }} className="desktop-table">
+                    <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr 1fr 1fr 1fr 32px', gap: '8px', padding: '8px 16px', background: 'var(--surface3)', borderBottom: '1px solid var(--border)' }}>
+                      {['Date', 'Spend (€)', 'Conv. Value (€)', 'Conversions', 'Leads', ''].map(h => (
+                        <div key={h} style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{h}</div>
+                      ))}
+                    </div>
+                    {manualRows.map((row, i) => (
+                      <div key={i} style={{ display: 'grid', gridTemplateColumns: '130px 1fr 1fr 1fr 1fr 32px', gap: '8px', padding: '8px 16px', borderBottom: i < manualRows.length - 1 ? '1px solid var(--border)' : 'none', alignItems: 'center' }}>
+                        <input type="date" value={row.date} onChange={e => updateRow(i, 'date', e.target.value)} style={{ ...inp, padding: '6px 8px' }} />
+                        <input type="number" placeholder="0.00" step="0.01" value={row.spend} onChange={e => updateRow(i, 'spend', e.target.value)} style={inp} />
+                        <input type="number" placeholder="0.00" step="0.01" value={row.conversion_value} onChange={e => updateRow(i, 'conversion_value', e.target.value)} style={inp} />
+                        <input type="number" placeholder="0" value={row.conversions} onChange={e => updateRow(i, 'conversions', e.target.value)} style={inp} />
+                        <input type="number" placeholder="0" value={row.leads} onChange={e => updateRow(i, 'leads', e.target.value)} style={inp} />
+                        <button onClick={() => removeRow(i)} disabled={manualRows.length === 1}
+                          style={{ width: '28px', height: '28px', borderRadius: '6px', border: 'none', background: manualRows.length === 1 ? 'transparent' : 'rgba(255,77,106,0.1)', color: manualRows.length === 1 ? 'var(--border)' : 'var(--red)', cursor: manualRows.length === 1 ? 'default' : 'pointer', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
+                      </div>
                     ))}
                   </div>
-                  {manualRows.map((row, i) => (
-                    <div key={i} style={{ display: 'grid', gridTemplateColumns: '130px 1fr 1fr 1fr 1fr 32px', gap: '8px', padding: '8px 16px', borderBottom: i < manualRows.length - 1 ? '1px solid var(--border)' : 'none', alignItems: 'center' }}>
-                      <input type="date" value={row.date} onChange={e => updateRow(i, 'date', e.target.value)} style={{ ...inp, padding: '6px 8px' }} />
-                      <input type="number" placeholder="0.00" step="0.01" value={row.spend} onChange={e => updateRow(i, 'spend', e.target.value)} style={inp} />
-                      <input type="number" placeholder="0.00" step="0.01" value={row.conversion_value} onChange={e => updateRow(i, 'conversion_value', e.target.value)} style={inp} />
-                      <input type="number" placeholder="0" value={row.conversions} onChange={e => updateRow(i, 'conversions', e.target.value)} style={inp} />
-                      <input type="number" placeholder="0" value={row.leads} onChange={e => updateRow(i, 'leads', e.target.value)} style={inp} />
-                      <button onClick={() => removeRow(i)} disabled={manualRows.length === 1}
-                        style={{ width: '28px', height: '28px', borderRadius: '6px', border: 'none', background: manualRows.length === 1 ? 'transparent' : 'rgba(255,77,106,0.1)', color: manualRows.length === 1 ? 'var(--border)' : 'var(--red)', cursor: manualRows.length === 1 ? 'default' : 'pointer', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
-                    </div>
-                  ))}
+
+                  {/* ✅ Mobile card view — one card per row */}
+                  <style>{`
+                    @media(min-width:600px){.desktop-table{display:block!important;}.mobile-cards{display:none!important;}}
+                    @media(max-width:599px){.desktop-table{display:none!important;}.mobile-cards{display:flex!important;}}
+                  `}</style>
+                  <div className="mobile-cards" style={{ flexDirection: 'column', gap: '0' }}>
+                    {manualRows.map((row, i) => (
+                      <div key={i} style={{ padding: '14px 16px', borderBottom: i < manualRows.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                          <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)' }}>Row {i + 1}</div>
+                          <button onClick={() => removeRow(i)} disabled={manualRows.length === 1}
+                            style={{ width: '26px', height: '26px', borderRadius: '6px', border: 'none', background: manualRows.length === 1 ? 'transparent' : 'rgba(255,77,106,0.1)', color: manualRows.length === 1 ? 'var(--border)' : 'var(--red)', cursor: manualRows.length === 1 ? 'default' : 'pointer', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                          <div style={{ gridColumn: '1/-1' }}>
+                            <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>DATE</label>
+                            <input type="date" value={row.date} onChange={e => updateRow(i, 'date', e.target.value)} style={inp} />
+                          </div>
+                          <div>
+                            <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>SPEND (€)</label>
+                            <input type="number" placeholder="0.00" step="0.01" value={row.spend} onChange={e => updateRow(i, 'spend', e.target.value)} style={inp} />
+                          </div>
+                          <div>
+                            <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>CONV. VALUE (€)</label>
+                            <input type="number" placeholder="0.00" step="0.01" value={row.conversion_value} onChange={e => updateRow(i, 'conversion_value', e.target.value)} style={inp} />
+                          </div>
+                          <div>
+                            <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>CONVERSIONS</label>
+                            <input type="number" placeholder="0" value={row.conversions} onChange={e => updateRow(i, 'conversions', e.target.value)} style={inp} />
+                          </div>
+                          <div>
+                            <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>LEADS</label>
+                            <input type="number" placeholder="0" value={row.leads} onChange={e => updateRow(i, 'leads', e.target.value)} style={inp} />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
 
               {error && <div style={{ background: 'rgba(255,77,106,0.1)', border: '1px solid rgba(255,77,106,0.3)', borderRadius: '8px', padding: '12px 16px', fontSize: '13px', color: 'var(--red)' }}>⚠ {error}</div>}
               {success && <div style={{ background: 'rgba(0,224,158,0.1)', border: '1px solid rgba(0,224,158,0.3)', borderRadius: '8px', padding: '12px 16px', fontSize: '13px', color: 'var(--green)' }}>{success}</div>}
-              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                {manualMode === 'daily' && <button onClick={addRow} style={{ padding: '10px 18px', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-mid)' }}>＋ Add row</button>}
+
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                {manualMode === 'daily' && (
+                  <button onClick={addRow} style={{ padding: '10px 18px', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-mid)' }}>＋ Add row</button>
+                )}
                 <button onClick={manualMode === 'daily' ? submitManual : submitRange} disabled={loading}
-                  style={{ padding: '10px 24px', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', background: loading ? 'var(--surface3)' : 'var(--cyan)', color: loading ? 'var(--text-muted)' : '#080c0f', border: 'none' }}>
+                  style={{ padding: '10px 24px', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', background: loading ? 'var(--surface3)' : 'var(--cyan)', color: loading ? 'var(--text-muted)' : '#080c0f', border: 'none', flex: 1, maxWidth: '200px' }}>
                   {loading ? '⏳ Saving...' : '💾 Save Data →'}
                 </button>
               </div>
             </>
           )}
 
+          {/* ── CSV MODE: SETUP ── */}
           {mode === 'csv' && csvStep === 'setup' && (
             <>
               <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px' }}>
                 <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '12px' }}>Upload CSV</div>
                 <div onDragOver={e => { e.preventDefault(); setDragging(true) }} onDragLeave={() => setDragging(false)}
                   onDrop={e => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f) }}
-                  style={{ border: '2px dashed ' + (dragging ? 'var(--cyan)' : 'var(--border)'), borderRadius: '10px', padding: '28px 20px', textAlign: 'center', background: dragging ? 'rgba(0,200,224,0.05)' : 'transparent', transition: 'all 0.2s' }}>
+                  style={{ border: '2px dashed ' + (dragging ? 'var(--cyan)' : 'var(--border)'), borderRadius: '10px', padding: '28px 16px', textAlign: 'center', background: dragging ? 'rgba(0,200,224,0.05)' : 'transparent', transition: 'all 0.2s' }}>
                   <div style={{ fontSize: '32px', marginBottom: '8px' }}>📂</div>
                   <div style={{ fontSize: '14px', fontWeight: 600, marginBottom: '4px' }}>Drop your CSV here</div>
-                  <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '14px' }}>{platform === 'google' ? 'Google Ads → Campaigns → Download → CSV' : 'Meta Ads Manager → Export → CSV'}</div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '14px' }}>
+                    {platform === 'google' ? 'Google Ads → Campaigns → Download → CSV' : 'Meta Ads Manager → Export → CSV'}
+                  </div>
                   <button onClick={() => fileRef.current?.click()} style={{ padding: '8px 20px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '13px', fontWeight: 600, cursor: 'pointer', background: 'var(--surface3)', color: 'var(--text-mid)' }}>Browse file</button>
                   <input ref={fileRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f) }} />
                 </div>
@@ -337,17 +393,31 @@ export default function UploadClient({ clients, adAccounts: initialAccounts }: P
             </>
           )}
 
+          {/* ── CSV MODE: MAP ── */}
           {mode === 'csv' && csvStep === 'map' && (
             <>
-              <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '20px' }}>
+              <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
                   <span style={{ fontSize: '20px' }}>📄</span>
-                  <div style={{ flex: 1 }}><div style={{ fontWeight: 600, fontSize: '14px' }}>{file?.name}</div><div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Map columns below</div></div>
-                  <button onClick={() => setCsvStep('setup')} style={{ padding: '6px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>← Back</button>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: '14px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file?.name}</div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Map columns below</div>
+                  </div>
+                  <button onClick={() => setCsvStep('setup')} style={{ padding: '6px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-muted)', flexShrink: 0 }}>← Back</button>
                 </div>
-                {[{key:'date',label:'Date',req:true},{key:'spend',label:'Spend',req:true},{key:'conversion_value',label:'Conv. Value',req:false},{key:'conversions',label:'Conversions',req:false},{key:'leads',label:'Leads',req:false},{key:'impressions',label:'Impressions',req:false},{key:'clicks',label:'Clicks',req:false}].map(f => (
-                  <div key={f.key} style={{ display: 'grid', gridTemplateColumns: '160px 1fr', gap: '12px', alignItems: 'center', marginBottom: '10px' }}>
-                    <div style={{ fontSize: '13px', fontWeight: 600, color: f.req ? 'var(--text)' : 'var(--text-muted)' }}>{f.label}{f.req && <span style={{ color: 'var(--cyan)', marginLeft: '4px' }}>*</span>}</div>
+                {[
+                  {key:'date',label:'Date',req:true},
+                  {key:'spend',label:'Spend',req:true},
+                  {key:'conversion_value',label:'Conv. Value',req:false},
+                  {key:'conversions',label:'Conversions',req:false},
+                  {key:'leads',label:'Leads',req:false},
+                  {key:'impressions',label:'Impressions',req:false},
+                  {key:'clicks',label:'Clicks',req:false}
+                ].map(f => (
+                  <div key={f.key} style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '10px', alignItems: 'center', marginBottom: '10px' }}>
+                    <div style={{ fontSize: '13px', fontWeight: 600, color: f.req ? 'var(--text)' : 'var(--text-muted)' }}>
+                      {f.label}{f.req && <span style={{ color: 'var(--cyan)', marginLeft: '4px' }}>*</span>}
+                    </div>
                     <select value={mapping[f.key] || ''} onChange={e => setMapping(p => ({ ...p, [f.key]: e.target.value }))}>
                       <option value="">— skip —</option>
                       {headers.map(h => <option key={h} value={h}>{h}</option>)}
@@ -355,23 +425,27 @@ export default function UploadClient({ clients, adAccounts: initialAccounts }: P
                   </div>
                 ))}
               </div>
+
               {preview.length > 0 && mapping.date && mapping.spend && (
                 <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', overflowX: 'auto' }}>
                   <div style={{ fontWeight: 700, marginBottom: '10px', fontSize: '13px' }}>Preview</div>
                   <table style={{ borderCollapse: 'collapse', fontSize: '12px', minWidth: '100%' }}>
-                    <thead><tr>{['date','spend','conv. value','conversions','leads'].map(h=><th key={h} style={{padding:'6px 12px',textAlign:'left',color:'var(--text-muted)',fontWeight:600,borderBottom:'1px solid var(--border)',whiteSpace:'nowrap'}}>{h}</th>)}</tr></thead>
+                    <thead><tr>{['date','spend','conv. value','conversions','leads'].map(h=>(
+                      <th key={h} style={{padding:'6px 10px',textAlign:'left',color:'var(--text-muted)',fontWeight:600,borderBottom:'1px solid var(--border)',whiteSpace:'nowrap'}}>{h}</th>
+                    ))}</tr></thead>
                     <tbody>{preview.map((row,i)=>(
                       <tr key={i}>
-                        <td style={{padding:'7px 12px',borderBottom:'1px solid var(--border)'}}>{row[mapping.date]}</td>
-                        <td style={{padding:'7px 12px',borderBottom:'1px solid var(--border)',color:'var(--cyan)'}}>€{pNum(row[mapping.spend]||'0').toFixed(2)}</td>
-                        <td style={{padding:'7px 12px',borderBottom:'1px solid var(--border)'}}>€{pNum(row[mapping.conversion_value]||'0').toFixed(2)}</td>
-                        <td style={{padding:'7px 12px',borderBottom:'1px solid var(--border)'}}>{pNum(row[mapping.conversions]||'0')}</td>
-                        <td style={{padding:'7px 12px',borderBottom:'1px solid var(--border)'}}>{pNum(row[mapping.leads]||'0')}</td>
+                        <td style={{padding:'7px 10px',borderBottom:'1px solid var(--border)',whiteSpace:'nowrap'}}>{row[mapping.date]}</td>
+                        <td style={{padding:'7px 10px',borderBottom:'1px solid var(--border)',color:'var(--cyan)'}}>€{pNum(row[mapping.spend]||'0').toFixed(2)}</td>
+                        <td style={{padding:'7px 10px',borderBottom:'1px solid var(--border)'}}>€{pNum(row[mapping.conversion_value]||'0').toFixed(2)}</td>
+                        <td style={{padding:'7px 10px',borderBottom:'1px solid var(--border)'}}>{pNum(row[mapping.conversions]||'0')}</td>
+                        <td style={{padding:'7px 10px',borderBottom:'1px solid var(--border)'}}>{pNum(row[mapping.leads]||'0')}</td>
                       </tr>
                     ))}</tbody>
                   </table>
                 </div>
               )}
+
               {error && <div style={{ background: 'rgba(255,77,106,0.1)', border: '1px solid rgba(255,77,106,0.3)', borderRadius: '8px', padding: '12px 16px', fontSize: '13px', color: 'var(--red)' }}>⚠ {error}</div>}
               <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
                 <button onClick={() => setCsvStep('setup')} style={{ padding: '10px 20px', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-mid)' }}>← Back</button>
@@ -383,14 +457,21 @@ export default function UploadClient({ clients, adAccounts: initialAccounts }: P
             </>
           )}
 
+          {/* ── CSV DONE ── */}
           {mode === 'csv' && csvStep === 'done' && (
-            <div style={{ textAlign: 'center', padding: '60px 40px', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '16px' }}>
+            <div style={{ textAlign: 'center', padding: '48px 24px', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '16px' }}>
               <div style={{ fontSize: '56px', marginBottom: '16px' }}>✅</div>
-              <div style={{ fontFamily: 'Syne, sans-serif', fontSize: '24px', fontWeight: 800, marginBottom: '8px' }}>Imported!</div>
-              <div style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '32px' }}>Data is live in the dashboard.</div>
+              <div style={{ fontFamily: 'Syne, sans-serif', fontSize: '22px', fontWeight: 800, marginBottom: '8px' }}>Imported!</div>
+              <div style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '28px' }}>Data is live in the dashboard.</div>
               <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
-                <button onClick={() => { setCsvStep('setup'); setFile(null); setPreview([]); setMapping({}) }} style={{ padding: '10px 20px', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-mid)' }}>Import another</button>
-                <button onClick={() => window.location.href = '/dashboard?client=' + clientId} style={{ padding: '10px 24px', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', background: 'var(--cyan)', color: '#080c0f', border: 'none' }}>View Dashboard →</button>
+                <button onClick={() => { setCsvStep('setup'); setFile(null); setPreview([]); setMapping({}) }}
+                  style={{ padding: '10px 20px', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-mid)' }}>
+                  Import another
+                </button>
+                <button onClick={() => window.location.href = '/dashboard?client=' + clientId}
+                  style={{ padding: '10px 24px', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', background: 'var(--cyan)', color: '#080c0f', border: 'none' }}>
+                  View Dashboard →
+                </button>
               </div>
             </div>
           )}
