@@ -82,11 +82,12 @@ function PeriodSel({ value, onChange }:any) {
   )
 }
 
-export default function ReportsClient({ reports:initR, clients:initC, isAdmin }:Props) {
+export default function ReportsClient({ reports:initR, clients:initC, isAdmin:initIsAdmin }:Props) {
   const sb = createClient()
   const [tab, setTab] = useState<'reports'|'schedule'>('reports')
   const [reports, setReports] = useState(initR)
   const [clients, setClients] = useState(initC)
+  const [isAdmin, setIsAdmin] = useState(initIsAdmin) // ✅ tracked in state
   const [busy, setBusy] = useState(initC.length===0)
 
   // builder
@@ -120,16 +121,28 @@ export default function ReportsClient({ reports:initR, clients:initC, isAdmin }:
   const [savingS, setSavingS] = useState(false)
   const [sAccAvail, setSAccAvail] = useState<string[]>([])
 
-  // Load data client-side if server returned nothing
+  // ✅ Client-side fallback — also detects isAdmin from session
   useEffect(() => {
-    if (initC.length>0) { setBusy(false); return }
     async function go() {
       const { data:{session} } = await sb.auth.getSession()
       if (!session) { setBusy(false); return }
+
+      // Always re-check role from DB (fixes server-side auth cookie issue)
       const { data:p } = await sb.from('profiles').select('role').eq('id',session.user.id).single()
+      const detectedAdmin = p?.role === 'admin'
+      setIsAdmin(detectedAdmin)
+
+      // If server already loaded data, just update isAdmin and stop
+      if (initC.length > 0) { setBusy(false); return }
+
       let cl:any[]=[]
-      if (p?.role==='admin') { const { data } = await sb.from('clients').select('id,name,email').order('name'); cl=data||[] }
-      else { const { data } = await sb.from('clients').select('id,name,email').eq('user_id',session.user.id); cl=data||[] }
+      if (detectedAdmin) {
+        const { data } = await sb.from('clients').select('id,name,email').order('name')
+        cl=data||[]
+      } else {
+        const { data } = await sb.from('clients').select('id,name,email').eq('user_id',session.user.id)
+        cl=data||[]
+      }
       setClients(cl)
       if (cl[0]) { setBClient(cl[0].id); setSClient(cl[0].id); setSEmail(cl[0].email||'') }
       const { data:r } = await sb.from('reports').select('*,clients(name)').order('created_at',{ascending:false})
@@ -141,11 +154,11 @@ export default function ReportsClient({ reports:initR, clients:initC, isAdmin }:
     go()
   }, [])
 
-  // load schedules when tab switches (so it's always fresh)
+  // load schedules when tab switches
   useEffect(() => {
     if (tab!=='schedule' || !isAdmin) return
     sb.from('report_schedules').select('*,clients(name)').order('created_at',{ascending:false}).then(({data})=>setScheds(data||[]))
-  }, [tab])
+  }, [tab, isAdmin])
 
   useEffect(() => {
     if (!bClient) return
@@ -280,6 +293,7 @@ export default function ReportsClient({ reports:initR, clients:initC, isAdmin }:
         <button onClick={()=>setTab('reports')} style={{ padding:'12px 18px', background:'none', border:'none', cursor:'pointer', fontSize:'13px', fontWeight:tab==='reports'?700:500, color:tab==='reports'?C.cyan:C.muted, borderBottom:`2px solid ${tab==='reports'?C.cyan:'transparent'}`, marginBottom:'-1px' }}>
           📊 Reports
         </button>
+        {/* ✅ Always show schedule tab for admin — isAdmin now detected client-side too */}
         {isAdmin && (
           <button onClick={()=>setTab('schedule')} style={{ padding:'12px 18px', background:'none', border:'none', cursor:'pointer', fontSize:'13px', fontWeight:tab==='schedule'?700:500, color:tab==='schedule'?C.cyan:C.muted, borderBottom:`2px solid ${tab==='schedule'?C.cyan:'transparent'}`, marginBottom:'-1px' }}>
             ⏰ Scheduled Reports
@@ -343,7 +357,10 @@ export default function ReportsClient({ reports:initR, clients:initC, isAdmin }:
                       <div style={{ fontSize:'12px', color:C.muted }}>
                         {s.frequency==='daily'?`Daily`
                           :s.frequency==='weekly'?`Every week on ${['','Mon','Tue','Wed','Thu','Fri','Sat','Sun'][Number(s.day)]||'day '+s.day}`
-                          :`Monthly on day ${s.day}`} at {s.hour}:00 · {s.recipient_email}
+                          :`Monthly on day ${s.day}`} at {s.hour}:00 · to {s.recipient_email}
+                      </div>
+                      <div style={{ fontSize:'11px', color:C.muted, marginTop:'2px' }}>
+                        {s.platform==='all'?'All platforms':s.platform} · {s.report_period} · {(s.metrics||[]).join(', ')}
                       </div>
                     </div>
                     <span style={{ padding:'3px 10px', borderRadius:'100px', fontSize:'11px', fontWeight:600, background:s.active?'rgba(0,224,158,0.12)':'rgba(90,112,128,0.12)', color:s.active?C.green:C.muted }}>{s.active?'Active':'Paused'}</span>
@@ -384,7 +401,6 @@ export default function ReportsClient({ reports:initR, clients:initC, isAdmin }:
 
           {step==='preview'&&rdata&&(
             <div>
-              {/* Action bar */}
               <div style={{ display:'flex', gap:'8px', marginBottom:'18px', flexWrap:'wrap', alignItems:'center' }}>
                 <button onClick={()=>{ setStep('cfg'); setRdata(null); setSendMsg(null) }} style={{ padding:'7px 14px', borderRadius:'8px', fontSize:'12px', fontWeight:600, cursor:'pointer', background:'transparent', border:`1px solid ${C.b}`, color:C.mid }}>← Edit</button>
                 <div style={{ flex:1 }}/>
