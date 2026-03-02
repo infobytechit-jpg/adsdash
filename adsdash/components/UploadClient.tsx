@@ -36,32 +36,20 @@ export default function UploadClient({ clients: initialClients, adAccounts: init
   const fileRef = useRef<HTMLInputElement>(null)
   const supabase = createClient()
 
-  // Client-side fallback: if server didn't load clients/accounts (SSR auth issue), fetch them here
+  // Client-side fallback: if server didn't load clients/accounts (SSR auth issue), fetch via API route
   useEffect(() => {
     if (initialClients.length > 0) return // server loaded successfully, skip
 
     async function fetchData() {
       try {
-        const [{ data: clientData }, { data: adAccountRows }, { data: metricAccounts }] = await Promise.all([
-          supabase.from('clients').select('id,name').order('name'),
-          supabase.from('ad_accounts').select('*').order('account_name'),
-          supabase.from('metrics_cache').select('client_id,platform,account_name').not('account_name', 'is', null),
-        ])
-
-        const loadedClients = clientData || []
-        setClients(loadedClients)
-        if (loadedClients.length > 0) setClientId(loadedClients[0].id)
-
-        const existing = new Set((adAccountRows || []).map((a: any) => `${a.client_id}|${a.platform}|${a.account_name}`))
-        const seen = new Set<string>()
-        const extra = (metricAccounts || [])
-          .filter((m: any) => m.account_name && !existing.has(`${m.client_id}|${m.platform}|${m.account_name}`))
-          .map((m: any, i: number) => ({ id: `metrics-${m.client_id}-${m.platform}-${i}`, client_id: m.client_id, platform: m.platform, account_name: m.account_name, from_metrics: true }))
-          .filter((a: any) => { const k = `${a.client_id}|${a.platform}|${a.account_name}`; if (seen.has(k)) return false; seen.add(k); return true })
-
-        setAdAccounts([...(adAccountRows || []), ...extra])
+        const res = await fetch('/api/upload/data')
+        if (!res.ok) throw new Error('Failed to fetch upload data')
+        const { clients: loadedClients, adAccounts: loadedAccounts } = await res.json()
+        setClients(loadedClients || [])
+        if (loadedClients?.length > 0) setClientId(loadedClients[0].id)
+        setAdAccounts(loadedAccounts || [])
       } catch (e) {
-        console.error('Failed to load upload data client-side:', e)
+        console.error('Failed to load upload data:', e)
       }
     }
 
