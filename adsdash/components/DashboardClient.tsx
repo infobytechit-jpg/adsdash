@@ -5,7 +5,8 @@ import { useMemo, useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip,
-  ResponsiveContainer, PieChart, Pie, Cell
+  ResponsiveContainer, PieChart, Pie, Cell,
+  CartesianGrid, ReferenceLine
 } from 'recharts'
 
 interface Props {
@@ -50,7 +51,56 @@ function useCountUp(target: number, duration = 1200) {
   return cur
 }
 
-function KpiCard({ label, accent, rawValue, displayValue, sub, onDragStart, onDragEnter, onDragEnd, dragging }: any) {
+// ── Sparkline mini chart ────────────────────────────────────────────
+function Sparkline({ data, color }: { data: number[]; color: string }) {
+  if (!data || data.length < 2) return null
+  const w = 80, h = 32, pad = 2
+  const max = Math.max(...data), min = Math.min(...data)
+  const range = max - min || 1
+  const pts = data.map((v, i) => {
+    const x = pad + (i / (data.length - 1)) * (w - pad * 2)
+    const y = h - pad - ((v - min) / range) * (h - pad * 2)
+    return `${x},${y}`
+  }).join(' ')
+  // gradient fill
+  const fillPts = `${pad},${h - pad} ${pts} ${w - pad},${h - pad}`
+  return (
+    <svg width={w} height={h} style={{ display: 'block' }}>
+      <defs>
+        <linearGradient id={`sg-${color.replace('#','')}`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity={0.3} />
+          <stop offset="100%" stopColor={color} stopOpacity={0} />
+        </linearGradient>
+      </defs>
+      <polygon points={fillPts} fill={`url(#sg-${color.replace('#','')})`} />
+      <polyline points={pts} fill="none" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
+      {/* last point dot */}
+      {data.length > 0 && (() => {
+        const lastX = pad + ((data.length - 1) / (data.length - 1)) * (w - pad * 2)
+        const lastY = h - pad - ((data[data.length - 1] - min) / range) * (h - pad * 2)
+        return <circle cx={lastX} cy={lastY} r={2.5} fill={color} />
+      })()}
+    </svg>
+  )
+}
+
+// ── % change badge ──────────────────────────────────────────────────
+function ChangeBadge({ current, previous }: { current: number; previous: number }) {
+  if (previous === 0 && current === 0) return null
+  if (previous === 0) return <span style={{ fontSize: '11px', fontWeight: 700, color: '#00e09e', background: 'rgba(0,224,158,0.12)', padding: '2px 7px', borderRadius: '100px' }}>New</span>
+  const pct = ((current - previous) / previous) * 100
+  const up = pct >= 0
+  const color = up ? '#00e09e' : '#ff4d6a'
+  const bg = up ? 'rgba(0,224,158,0.12)' : 'rgba(255,77,106,0.12)'
+  return (
+    <span style={{ fontSize: '11px', fontWeight: 700, color, background: bg, padding: '2px 7px', borderRadius: '100px', display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
+      {up ? '↑' : '↓'} {Math.abs(pct).toFixed(1)}%
+    </span>
+  )
+}
+
+// ── KPI Card (enhanced) ─────────────────────────────────────────────
+function KpiCard({ label, accent, rawValue, displayValue, sub, sparkData, prevValue, onDragStart, onDragEnter, onDragEnd, dragging }: any) {
   const animated = useCountUp(rawValue)
   const isEur = displayValue.startsWith('€')
   const isX = displayValue.endsWith('x')
@@ -61,14 +111,45 @@ function KpiCard({ label, accent, rawValue, displayValue, sub, onDragStart, onDr
   }
   return (
     <div draggable onDragStart={onDragStart} onDragEnter={onDragEnter} onDragEnd={onDragEnd} onDragOver={(e: any) => e.preventDefault()}
-      style={{ background: 'var(--surface2)', border: `1px solid ${dragging ? accent : 'var(--border)'}`, borderRadius: '12px', padding: '20px', position: 'relative', overflow: 'hidden', cursor: 'grab', userSelect: 'none', opacity: dragging ? 0.4 : 1, transition: 'opacity 0.15s, border-color 0.15s' }}>
+      style={{ background: 'var(--surface2)', border: `1px solid ${dragging ? accent : 'var(--border)'}`, borderRadius: '12px', padding: '16px 20px 14px', position: 'relative', overflow: 'hidden', cursor: 'grab', userSelect: 'none', opacity: dragging ? 0.4 : 1, transition: 'opacity 0.15s, border-color 0.15s, box-shadow 0.2s', boxShadow: dragging ? 'none' : `0 0 0 0 ${accent}` }}>
+      {/* top accent bar */}
       <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '2px', background: accent, opacity: 0.7 }} />
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+      {/* subtle glow bg */}
+      <div style={{ position: 'absolute', top: 0, right: 0, width: '80px', height: '80px', background: accent, opacity: 0.04, borderRadius: '50%', transform: 'translate(20px,-20px)', pointerEvents: 'none' }} />
+
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '8px' }}>
         <div style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.8px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{label}</div>
-        <div style={{ fontSize: '12px', color: 'var(--border)', cursor: 'grab' }}>⠿</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <ChangeBadge current={rawValue} previous={prevValue ?? 0} />
+          <div style={{ fontSize: '12px', color: 'var(--border)', cursor: 'grab' }}>⠿</div>
+        </div>
       </div>
-      <div style={{ fontFamily: 'Syne, sans-serif', fontSize: '28px', fontWeight: 700, letterSpacing: '-1px', marginBottom: '6px' }}>{render(animated)}</div>
-      <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{sub}</div>
+
+      <div style={{ fontFamily: 'Syne, sans-serif', fontSize: '26px', fontWeight: 700, letterSpacing: '-1px', marginBottom: '4px' }}>{render(animated)}</div>
+
+      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '8px' }}>
+        <div style={{ fontSize: '11px', color: 'var(--text-muted)', flex: 1 }}>{sub}</div>
+        <Sparkline data={sparkData || []} color={accent} />
+      </div>
+    </div>
+  )
+}
+
+// ── Custom crosshair tooltip ────────────────────────────────────────
+function CustomTooltip({ active, payload, label, compareMode }: any) {
+  if (!active || !payload?.length) return null
+  return (
+    <div style={{ background: '#0e1419', border: '1px solid #1f2d38', borderRadius: '10px', padding: '10px 14px', fontSize: '12px', boxShadow: '0 8px 32px rgba(0,0,0,0.5)', minWidth: '140px' }}>
+      <div style={{ fontWeight: 700, color: '#8ba0ae', marginBottom: '8px', fontSize: '11px', letterSpacing: '0.5px' }}>{label}</div>
+      {payload.map((p: any, i: number) => (
+        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: '16px', marginBottom: i < payload.length - 1 ? '4px' : 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#8ba0ae' }}>
+            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: p.color }} />
+            {p.name}
+          </div>
+          <div style={{ fontWeight: 700, color: p.color }}>€{Number(p.value).toFixed(0)}</div>
+        </div>
+      ))}
     </div>
   )
 }
@@ -89,26 +170,16 @@ function DateRangePicker({ startDate, endDate, onApply, onClose }: {
   const DAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
   const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
-  function getDaysInMonth(y: number, m: number) {
-    return new Date(y, m + 1, 0).getDate()
-  }
-  function getFirstDay(y: number, m: number) {
-    return new Date(y, m, 1).getDay()
-  }
-
+  function getDaysInMonth(y: number, m: number) { return new Date(y, m + 1, 0).getDate() }
+  function getFirstDay(y: number, m: number) { return new Date(y, m, 1).getDay() }
   function toStr(y: number, m: number, d: number) {
     return `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`
   }
-
   function handleDay(day: number) {
     const clicked = toStr(viewDate.year, viewDate.month, day)
     if (!s || (s && e)) { setS(clicked); setE('') }
-    else {
-      if (clicked < s) { setE(s); setS(clicked) }
-      else { setE(clicked) }
-    }
+    else { if (clicked < s) { setE(s); setS(clicked) } else { setE(clicked) } }
   }
-
   function isInRange(day: number) {
     if (!s || !e) return false
     const d = toStr(viewDate.year, viewDate.month, day)
@@ -116,15 +187,8 @@ function DateRangePicker({ startDate, endDate, onApply, onClose }: {
   }
   function isStart(day: number) { return toStr(viewDate.year, viewDate.month, day) === s }
   function isEnd(day: number) { return toStr(viewDate.year, viewDate.month, day) === e }
-
-  function prevMonth() {
-    setViewDate(v => v.month === 0 ? { year: v.year - 1, month: 11 } : { ...v, month: v.month - 1 })
-  }
-  function nextMonth() {
-    setViewDate(v => v.month === 11 ? { year: v.year + 1, month: 0 } : { ...v, month: v.month + 1 })
-  }
-
-  // Quick presets
+  function prevMonth() { setViewDate(v => v.month === 0 ? { year: v.year - 1, month: 11 } : { ...v, month: v.month - 1 }) }
+  function nextMonth() { setViewDate(v => v.month === 11 ? { year: v.year + 1, month: 0 } : { ...v, month: v.month + 1 }) }
   function preset(days: number) {
     const end = new Date(), start = new Date()
     start.setDate(start.getDate() - days)
@@ -133,27 +197,20 @@ function DateRangePicker({ startDate, endDate, onApply, onClose }: {
   }
   function presetMonth() {
     const now = new Date()
-    const start = new Date(now.getFullYear(), now.getMonth(), 1)
-    setS(start.toISOString().split('T')[0])
+    setS(new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0])
     setE(now.toISOString().split('T')[0])
   }
   function presetLastMonth() {
     const now = new Date()
-    const start = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-    const end = new Date(now.getFullYear(), now.getMonth(), 0)
-    setS(start.toISOString().split('T')[0])
-    setE(end.toISOString().split('T')[0])
+    setS(new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split('T')[0])
+    setE(new Date(now.getFullYear(), now.getMonth(), 0).toISOString().split('T')[0])
   }
-
   const totalDays = getDaysInMonth(viewDate.year, viewDate.month)
   const firstDay = getFirstDay(viewDate.year, viewDate.month)
   const cells = Array.from({ length: firstDay + totalDays }, (_, i) => i < firstDay ? null : i - firstDay + 1)
-
-  const C = { bg:'#080c0f', s:'#0e1419', s2:'#121a21', s3:'#1a2530', b:'#1f2d38', cyan:'#00C8E0', txt:'#e8f0f5', mid:'#8ba0ae', muted:'#5a7080' }
-
+  const C = { s:'#0e1419', s3:'#1a2530', b:'#1f2d38', cyan:'#00C8E0', txt:'#e8f0f5', mid:'#8ba0ae', muted:'#5a7080' }
   return (
     <div style={{ position: 'absolute', top: '100%', right: 0, zIndex: 500, marginTop: '6px', background: C.s, border: `1px solid ${C.b}`, borderRadius: '14px', padding: '16px', boxShadow: '0 20px 60px rgba(0,0,0,0.6)', width: '300px' }}>
-      {/* Presets */}
       <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '14px', paddingBottom: '14px', borderBottom: `1px solid ${C.b}` }}>
         {[['7d', () => preset(7)], ['30d', () => preset(30)], ['90d', () => preset(90)], ['This month', presetMonth], ['Last month', presetLastMonth]].map(([label, fn]: any) => (
           <button key={label as string} onClick={fn}
@@ -162,20 +219,14 @@ function DateRangePicker({ startDate, endDate, onApply, onClose }: {
           </button>
         ))}
       </div>
-
-      {/* Month nav */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
         <button onClick={prevMonth} style={{ background: 'none', border: 'none', color: C.mid, cursor: 'pointer', fontSize: '18px', padding: '2px 8px' }}>‹</button>
         <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: '14px' }}>{MONTHS[viewDate.month]} {viewDate.year}</div>
         <button onClick={nextMonth} style={{ background: 'none', border: 'none', color: C.mid, cursor: 'pointer', fontSize: '18px', padding: '2px 8px' }}>›</button>
       </div>
-
-      {/* Day headers */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: '2px', marginBottom: '4px' }}>
         {DAYS.map(d => <div key={d} style={{ textAlign: 'center', fontSize: '10px', fontWeight: 700, color: C.muted, padding: '2px 0' }}>{d}</div>)}
       </div>
-
-      {/* Day cells */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: '2px' }}>
         {cells.map((day, i) => {
           if (!day) return <div key={i} />
@@ -183,26 +234,15 @@ function DateRangePicker({ startDate, endDate, onApply, onClose }: {
           const today = toStr(viewDate.year, viewDate.month, day) === new Date().toISOString().split('T')[0]
           return (
             <button key={i} onClick={() => handleDay(day)}
-              style={{
-                padding: '6px 0', borderRadius: '6px', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: start || end ? 700 : 400,
-                background: start || end ? C.cyan : inRange ? 'rgba(0,200,224,0.15)' : 'transparent',
-                color: start || end ? '#080c0f' : inRange ? C.cyan : today ? C.cyan : C.txt,
-                outline: today && !start && !end ? `1px solid ${C.b}` : 'none',
-              }}>
+              style={{ padding: '6px 0', borderRadius: '6px', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: start || end ? 700 : 400, background: start || end ? C.cyan : inRange ? 'rgba(0,200,224,0.15)' : 'transparent', color: start || end ? '#080c0f' : inRange ? C.cyan : today ? C.cyan : C.txt, outline: today && !start && !end ? `1px solid ${C.b}` : 'none' }}>
               {day}
             </button>
           )
         })}
       </div>
-
-      {/* Selected range display */}
       <div style={{ marginTop: '14px', padding: '10px 12px', background: C.s3, borderRadius: '8px', fontSize: '12px', color: C.mid, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span>{s || '—'}</span>
-        <span style={{ color: C.muted }}>→</span>
-        <span>{e || '—'}</span>
+        <span>{s || '—'}</span><span style={{ color: C.muted }}>→</span><span>{e || '—'}</span>
       </div>
-
-      {/* Actions */}
       <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
         <button onClick={onClose} style={{ flex: 1, padding: '8px', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', background: 'transparent', border: `1px solid ${C.b}`, color: C.mid }}>Cancel</button>
         <button onClick={() => { if (s && e) onApply(s, e) }} disabled={!s || !e}
@@ -223,7 +263,6 @@ export default function DashboardClient({
   const searchParams = useSearchParams()
   const supabase = createClient()
 
-  // ✅ Always read live filter values from URL
   const period = searchParams.get('period') || initPeriod || 'week'
   const platform = searchParams.get('platform') || initPlatform || 'all'
   const selectedAccount = searchParams.get('account') || initSelectedAccount || 'all'
@@ -233,6 +272,7 @@ export default function DashboardClient({
   const [profile, setProfile] = useState(initProfile)
   const [clientData, setClientData] = useState(initClientData)
   const [metrics, setMetrics] = useState(initMetrics)
+  const [prevMetrics, setPrevMetrics] = useState<any[]>([])
   const [campaigns, setCampaigns] = useState(initCampaigns)
   const [isAdmin, setIsAdmin] = useState(initIsAdmin)
   const [accounts, setAccounts] = useState(initAccounts)
@@ -240,29 +280,24 @@ export default function DashboardClient({
   const [fetching, setFetching] = useState(false)
   const [showMetricPicker, setShowMetricPicker] = useState(false)
   const [showDatePicker, setShowDatePicker] = useState(false)
+  const [compareMode, setCompareMode] = useState(false)
   const [dragFrom, setDragFrom] = useState<number | null>(null)
   const [dragTo, setDragTo] = useState<number | null>(null)
   const datePickerRef = useRef<HTMLDivElement>(null)
-
   const [metricOrder, setMetricOrder] = useState<string[]>(() => ALL_METRICS.map(m => m.key))
   const clientId = searchParams.get('client') || initClientData?.id
 
-  // Close date picker on outside click
   useEffect(() => {
     function handler(e: MouseEvent) {
-      if (datePickerRef.current && !datePickerRef.current.contains(e.target as Node)) {
-        setShowDatePicker(false)
-      }
+      if (datePickerRef.current && !datePickerRef.current.contains(e.target as Node)) setShowDatePicker(false)
     }
     if (showDatePicker) document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [showDatePicker])
 
-  // Client-side fallback when server auth failed
   useEffect(() => {
     if (initProfile) { setLoading(false); return }
     async function load() {
-      // ✅ Use getUser() not getSession() — getSession() reads localStorage which may be empty
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { setLoading(false); return }
       const { data: p } = await supabase.from('profiles').select('*').eq('id', user.id).single()
@@ -291,24 +326,39 @@ export default function DashboardClient({
     load()
   }, [initProfile])
 
-  // ✅ Re-fetch when filters change (including custom date range)
+  // Helper: compute date range from period
+  function getDateRange(p: string, cStart?: string, cEnd?: string): [string, string] {
+    const end = new Date(), start = new Date()
+    if (p === 'custom' && cStart && cEnd) return [cStart, cEnd]
+    if (p === 'today') start.setHours(0, 0, 0, 0)
+    else if (p === 'week') start.setDate(start.getDate() - 7)
+    else if (p === 'month') start.setDate(1)
+    else start.setFullYear(start.getFullYear() - 1)
+    return [start.toISOString().split('T')[0], end.toISOString().split('T')[0]]
+  }
+
+  // Helper: compute previous period date range
+  function getPrevDateRange(p: string, cStart?: string, cEnd?: string): [string, string] {
+    if (p === 'custom' && cStart && cEnd) {
+      const diff = new Date(cEnd).getTime() - new Date(cStart).getTime()
+      const prevEnd = new Date(new Date(cStart).getTime() - 86400000)
+      const prevStart = new Date(prevEnd.getTime() - diff)
+      return [prevStart.toISOString().split('T')[0], prevEnd.toISOString().split('T')[0]]
+    }
+    const end = new Date(), start = new Date()
+    if (p === 'today') { start.setDate(start.getDate() - 1); end.setDate(end.getDate() - 1) }
+    else if (p === 'week') { end.setDate(end.getDate() - 7); start.setDate(start.getDate() - 14) }
+    else if (p === 'month') { start.setMonth(start.getMonth() - 1); start.setDate(1); end.setDate(0) }
+    else { start.setFullYear(start.getFullYear() - 2); end.setFullYear(end.getFullYear() - 1) }
+    return [start.toISOString().split('T')[0], end.toISOString().split('T')[0]]
+  }
+
   useEffect(() => {
     if (!clientId) return
     async function refetch() {
       setFetching(true)
-      const end = new Date(), start = new Date()
-
-      let s: string, e: string
-      if (period === 'custom' && customStart && customEnd) {
-        s = customStart; e = customEnd
-      } else {
-        if (period === 'today') start.setHours(0, 0, 0, 0)
-        else if (period === 'week') start.setDate(start.getDate() - 7)
-        else if (period === 'month') start.setDate(1)
-        else start.setFullYear(start.getFullYear() - 1)
-        s = start.toISOString().split('T')[0]
-        e = end.toISOString().split('T')[0]
-      }
+      const [s, e] = getDateRange(period, customStart, customEnd)
+      const [ps, pe] = getPrevDateRange(period, customStart, customEnd)
 
       const { data: aData } = await supabase.from('metrics_cache').select('account_name').eq('client_id', clientId).not('account_name', 'is', null)
       setAccounts(Array.from(new Set((aData || []).map((a: any) => a.account_name).filter(Boolean))))
@@ -318,6 +368,13 @@ export default function DashboardClient({
       if (selectedAccount !== 'all') q = q.eq('account_name', selectedAccount)
       const { data: m } = await q
       setMetrics(m || [])
+
+      // Fetch previous period for comparison
+      let pq = supabase.from('metrics_cache').select('*').eq('client_id', clientId).gte('date', ps).lte('date', pe).order('date')
+      if (platform !== 'all') pq = pq.eq('platform', platform)
+      if (selectedAccount !== 'all') pq = pq.eq('account_name', selectedAccount)
+      const { data: pm } = await pq
+      setPrevMetrics(pm || [])
 
       const { data: camp } = await supabase.from('campaign_metrics').select('*, campaigns(campaign_name,platform,status)').eq('client_id', clientId).gte('date', s).lte('date', e)
       setCampaigns(camp || [])
@@ -331,28 +388,19 @@ export default function DashboardClient({
     p.set(key, val)
     router.push(`/dashboard?${p.toString()}`)
   }
-
   function applyCustomRange(s: string, e: string) {
     const p = new URLSearchParams(searchParams.toString())
-    p.set('period', 'custom')
-    p.set('start', s)
-    p.set('end', e)
+    p.set('period', 'custom'); p.set('start', s); p.set('end', e)
     router.push(`/dashboard?${p.toString()}`)
     setShowDatePicker(false)
   }
-
   function setPresetPeriod(p: string) {
     const params = new URLSearchParams(searchParams.toString())
-    params.set('period', p)
-    params.delete('start')
-    params.delete('end')
+    params.set('period', p); params.delete('start'); params.delete('end')
     router.push(`/dashboard?${params.toString()}`)
   }
-
-  // Custom range label for button
   const customLabel = period === 'custom' && customStart && customEnd
-    ? `${customStart.slice(5)} → ${customEnd.slice(5)}`
-    : '📅'
+    ? `${customStart.slice(5)} → ${customEnd.slice(5)}` : '📅'
 
   function isVisible(key: string) {
     const m = ALL_METRICS.find(x => x.key === key)!
@@ -360,7 +408,6 @@ export default function DashboardClient({
     const val = clientData[m.col]
     return val === undefined || val === null ? m.defaultOn : val
   }
-
   async function toggleMetric(key: string) {
     if (!clientData?.id) return
     const m = ALL_METRICS.find(x => x.key === key)!
@@ -368,7 +415,6 @@ export default function DashboardClient({
     setClientData((prev: any) => ({ ...prev, [m.col]: newVal }))
     await supabase.from('clients').update({ [m.col]: newVal }).eq('id', clientData.id)
   }
-
   function handleDragEnd() {
     if (dragFrom !== null && dragTo !== null && dragFrom !== dragTo) {
       const o = [...metricOrder]; const [moved] = o.splice(dragFrom, 1); o.splice(dragTo, 0, moved)
@@ -386,8 +432,19 @@ export default function DashboardClient({
     conversion_value: a.conversion_value + Number(m.conversion_value || 0),
   }), { spend: 0, conversions: 0, leads: 0, clicks: 0, impressions: 0, conversion_value: 0 }), [metrics])
 
+  const prevTotals = useMemo(() => prevMetrics.reduce((a, m) => ({
+    spend: a.spend + Number(m.spend || 0),
+    conversions: a.conversions + Number(m.conversions || 0),
+    leads: a.leads + Number(m.leads || 0),
+    clicks: a.clicks + Number(m.clicks || 0),
+    impressions: a.impressions + Number(m.impressions || 0),
+    conversion_value: a.conversion_value + Number(m.conversion_value || 0),
+  }), { spend: 0, conversions: 0, leads: 0, clicks: 0, impressions: 0, conversion_value: 0 }), [prevMetrics])
+
   const roas = totals.spend > 0 ? totals.conversion_value / totals.spend : 0
+  const prevRoas = prevTotals.spend > 0 ? prevTotals.conversion_value / prevTotals.spend : 0
   const allTotals: any = { ...totals, roas }
+  const allPrevTotals: any = { ...prevTotals, roas: prevRoas }
 
   const gM = metrics.filter(m => m.platform === 'google')
   const mM = metrics.filter(m => m.platform === 'meta')
@@ -396,6 +453,7 @@ export default function DashboardClient({
   const gConv = gM.reduce((a, m) => a + Number(m.conversions || 0), 0)
   const mConv = mM.reduce((a, m) => a + Number(m.conversions || 0), 0)
 
+  // Chart data — merge current + previous period by position for comparison
   const chartData = useMemo(() => {
     const byDate: Record<string, any> = {}
     metrics.forEach(m => {
@@ -403,7 +461,47 @@ export default function DashboardClient({
       if (m.platform === 'google') byDate[m.date].google += Number(m.spend || 0)
       if (m.platform === 'meta') byDate[m.date].meta += Number(m.spend || 0)
     })
-    return Object.values(byDate).sort((a: any, b: any) => a.date.localeCompare(b.date))
+    const current = Object.values(byDate).sort((a: any, b: any) => a.date.localeCompare(b.date))
+
+    if (!compareMode || prevMetrics.length === 0) return current
+
+    // Build prev period totals by index
+    const prevByDate: Record<string, any> = {}
+    prevMetrics.forEach(m => {
+      if (!prevByDate[m.date]) prevByDate[m.date] = { google: 0, meta: 0 }
+      if (m.platform === 'google') prevByDate[m.date].google += Number(m.spend || 0)
+      if (m.platform === 'meta') prevByDate[m.date].meta += Number(m.spend || 0)
+    })
+    const prevArr = Object.values(prevByDate).sort((a: any, b: any) => (a.date || '').localeCompare(b.date || ''))
+
+    return current.map((d: any, i: number) => ({
+      ...d,
+      google_prev: prevArr[i]?.google || 0,
+      meta_prev: prevArr[i]?.meta || 0,
+    }))
+  }, [metrics, prevMetrics, compareMode])
+
+  // Sparkline data per metric (last N days)
+  const sparkByMetric = useMemo(() => {
+    const byDate: Record<string, any> = {}
+    metrics.forEach(m => {
+      if (!byDate[m.date]) byDate[m.date] = { spend: 0, conversions: 0, leads: 0, clicks: 0, impressions: 0, conversion_value: 0 }
+      byDate[m.date].spend += Number(m.spend || 0)
+      byDate[m.date].conversions += Number(m.conversions || 0)
+      byDate[m.date].leads += Number(m.leads || 0)
+      byDate[m.date].clicks += Number(m.clicks || 0)
+      byDate[m.date].impressions += Number(m.impressions || 0)
+      byDate[m.date].conversion_value += Number(m.conversion_value || 0)
+    })
+    const sorted = Object.entries(byDate).sort(([a], [b]) => a.localeCompare(b))
+    const result: Record<string, number[]> = {}
+    ALL_METRICS.forEach(m => {
+      result[m.key] = sorted.map(([, v]) => {
+        if (m.key === 'roas') return v.spend > 0 ? v.conversion_value / v.spend : 0
+        return v[m.key] || 0
+      })
+    })
+    return result
   }, [metrics])
 
   const convData = [
@@ -433,7 +531,6 @@ export default function DashboardClient({
     if (key === 'leads') return 'Form fills & calls'
     return ''
   }
-
   function getRaw(key: string, val: number) {
     if (key === 'roas') return Math.round(val * 100)
     return Math.round(val)
@@ -471,16 +568,14 @@ export default function DashboardClient({
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-          {/* Account filter */}
           {accounts.length > 0 && (
             <select value={selectedAccount} onChange={e => setParam('account', e.target.value)}
-              style={{ fontSize: '12px', padding: '6px 8px', background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: '8px', outline: 'none', maxWidth: '120px', width: 'auto' }}>
+              style={{ fontSize: '12px', padding: '6px 8px', background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: '8px', outline: 'none', maxWidth: '120px' }}>
               <option value="all">All Accounts</option>
               {accounts.map(a => <option key={a} value={a}>{a}</option>)}
             </select>
           )}
 
-          {/* Period preset buttons */}
           <div style={{ display: 'flex', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden', flexShrink: 0 }}>
             {([['today', 'Today'], ['week', 'Week'], ['month', 'Month'], ['all', 'All']] as const).map(([p, label]) => (
               <button key={p} onClick={() => setPresetPeriod(p)}
@@ -490,21 +585,20 @@ export default function DashboardClient({
             ))}
           </div>
 
-          {/* ✅ Custom date range button */}
           <div ref={datePickerRef} style={{ position: 'relative', flexShrink: 0 }}>
             <button onClick={() => setShowDatePicker(v => !v)}
               style={{ padding: '6px 10px', borderRadius: '8px', fontSize: '12px', fontWeight: 600, border: `1px solid ${period === 'custom' ? 'var(--cyan)' : 'var(--border)'}`, background: period === 'custom' ? 'rgba(0,200,224,0.1)' : 'transparent', color: period === 'custom' ? 'var(--cyan)' : 'var(--text-muted)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
               {customLabel}
             </button>
-            {showDatePicker && (
-              <DateRangePicker
-                startDate={customStart}
-                endDate={customEnd}
-                onApply={applyCustomRange}
-                onClose={() => setShowDatePicker(false)}
-              />
-            )}
+            {showDatePicker && <DateRangePicker startDate={customStart} endDate={customEnd} onApply={applyCustomRange} onClose={() => setShowDatePicker(false)} />}
           </div>
+
+          {/* Compare toggle */}
+          <button onClick={() => setCompareMode(v => !v)}
+            title="Compare to previous period"
+            style={{ padding: '6px 10px', borderRadius: '8px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', background: compareMode ? 'rgba(255,197,61,0.15)' : 'transparent', border: `1px solid ${compareMode ? '#ffc53d' : 'var(--border)'}`, color: compareMode ? '#ffc53d' : 'var(--text-muted)', whiteSpace: 'nowrap', flexShrink: 0 }}>
+            ⟳ vs prev
+          </button>
 
           <button onClick={() => setShowMetricPicker(v => !v)}
             style={{ padding: '6px 10px', borderRadius: '8px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', background: showMetricPicker ? 'var(--cyan)' : 'transparent', border: '1px solid var(--border)', color: showMetricPicker ? 'var(--black)' : 'var(--text-muted)', whiteSpace: 'nowrap', flexShrink: 0 }}>
@@ -537,6 +631,15 @@ export default function DashboardClient({
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '16px', opacity: fetching ? 0.5 : 1, transition: 'opacity 0.2s' }}>
 
+        {/* Compare mode banner */}
+        {compareMode && (
+          <div style={{ marginBottom: '16px', padding: '10px 16px', background: 'rgba(255,197,61,0.08)', border: '1px solid rgba(255,197,61,0.25)', borderRadius: '10px', fontSize: '12px', color: '#ffc53d', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span>⟳</span>
+            <span>Comparing to previous period — dashed lines and % badges show change vs last period</span>
+            <button onClick={() => setCompareMode(false)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#ffc53d', cursor: 'pointer', fontSize: '14px', opacity: 0.7 }}>✕</button>
+          </div>
+        )}
+
         {/* Platform pills */}
         <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
           {[{ key: 'all', label: 'All Platforms', color: '#00C8E0' }, { key: 'google', label: 'Google Ads', color: '#4285F4' }, { key: 'meta', label: 'Meta Ads', color: '#1877F2' }].map(p => (
@@ -557,14 +660,17 @@ export default function DashboardClient({
 
         {/* KPI Cards */}
         {visibleMetrics.length > 0 && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '12px', marginBottom: '20px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: '12px', marginBottom: '20px' }}>
             {visibleMetrics.map((m, i) => {
               const val = allTotals[m.key] || 0
+              const prevVal = allPrevTotals[m.key] || 0
               return (
                 <KpiCard key={m.key} label={m.label} accent={m.accent}
                   rawValue={getRaw(m.key, val)}
                   displayValue={doFmt(val, m.fmt)}
                   sub={getSub(m.key)}
+                  sparkData={sparkByMetric[m.key] || []}
+                  prevValue={compareMode ? getRaw(m.key, prevVal) : undefined}
                   dragging={dragFrom === i}
                   onDragStart={() => setDragFrom(i)}
                   onDragEnter={() => setDragTo(i)}
@@ -578,30 +684,61 @@ export default function DashboardClient({
         {/* Charts */}
         {!noData && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px', marginBottom: '20px' }}>
+
+            {/* Spend Over Time */}
             <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '20px' }}>
-              <div style={{ fontFamily: 'Syne, sans-serif', fontSize: '15px', fontWeight: 700, marginBottom: '4px' }}>Spend Over Time</div>
-              <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '16px' }}>Daily spend by platform</div>
-              <ResponsiveContainer width="100%" height={180}>
-                <AreaChart data={chartData}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '4px' }}>
+                <div>
+                  <div style={{ fontFamily: 'Syne, sans-serif', fontSize: '15px', fontWeight: 700 }}>Spend Over Time</div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '16px' }}>Daily spend by platform{compareMode ? ' vs previous period' : ''}</div>
+                </div>
+              </div>
+              <ResponsiveContainer width="100%" height={200}>
+                <AreaChart data={chartData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
                   <defs>
-                    <linearGradient id="gGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#4285F4" stopOpacity={0.3} /><stop offset="95%" stopColor="#4285F4" stopOpacity={0} /></linearGradient>
-                    <linearGradient id="mGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#1877F2" stopOpacity={0.3} /><stop offset="95%" stopColor="#1877F2" stopOpacity={0} /></linearGradient>
+                    <linearGradient id="gGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#4285F4" stopOpacity={0.4} />
+                      <stop offset="100%" stopColor="#4285F4" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="mGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#1877F2" stopOpacity={0.4} />
+                      <stop offset="100%" stopColor="#1877F2" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="gpGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#4285F4" stopOpacity={0.15} />
+                      <stop offset="100%" stopColor="#4285F4" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="mpGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#1877F2" stopOpacity={0.15} />
+                      <stop offset="100%" stopColor="#1877F2" stopOpacity={0} />
+                    </linearGradient>
                   </defs>
-                  <XAxis dataKey="date" tick={{ fill: '#5a7080', fontSize: 10 }} tickFormatter={d => d.slice(5)} />
-                  <YAxis tick={{ fill: '#5a7080', fontSize: 10 }} tickFormatter={v => `€${v}`} />
-                  <Tooltip contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '12px' }} formatter={(v: any) => [`€${Number(v).toFixed(0)}`, '']} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
+                  <XAxis dataKey="date" tick={{ fill: '#5a7080', fontSize: 10 }} tickFormatter={d => d.slice(5)} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fill: '#5a7080', fontSize: 10 }} tickFormatter={v => `€${v}`} axisLine={false} tickLine={false} width={45} />
+                  <Tooltip content={<CustomTooltip compareMode={compareMode} />} cursor={{ stroke: 'rgba(255,255,255,0.1)', strokeWidth: 1 }} />
+                  {compareMode && <>
+                    <Area type="monotone" dataKey="google_prev" stroke="#4285F4" strokeWidth={1} strokeDasharray="4 3" fill="url(#gpGrad)" name="Google (prev)" strokeOpacity={0.5} />
+                    <Area type="monotone" dataKey="meta_prev" stroke="#1877F2" strokeWidth={1} strokeDasharray="4 3" fill="url(#mpGrad)" name="Meta (prev)" strokeOpacity={0.5} />
+                  </>}
                   <Area type="monotone" dataKey="google" stroke="#4285F4" strokeWidth={2} fill="url(#gGrad)" name="Google" />
                   <Area type="monotone" dataKey="meta" stroke="#1877F2" strokeWidth={2} fill="url(#mGrad)" name="Meta" />
                 </AreaChart>
               </ResponsiveContainer>
-              <div style={{ display: 'flex', gap: '16px', marginTop: '8px' }}>
+              <div style={{ display: 'flex', gap: '16px', marginTop: '8px', flexWrap: 'wrap' }}>
                 {[['#4285F4', 'Google Ads'], ['#1877F2', 'Meta Ads']].map(([c, l]) => (
                   <div key={l} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--text-mid)' }}>
                     <div style={{ width: '12px', height: '2px', background: c, borderRadius: '2px' }} />{l}
                   </div>
                 ))}
+                {compareMode && <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--text-muted)' }}>
+                  <svg width="12" height="2"><line x1="0" y1="1" x2="12" y2="1" stroke="#8ba0ae" strokeWidth="1.5" strokeDasharray="3 2" /></svg>
+                  Previous period
+                </div>}
               </div>
             </div>
+
+            {/* Conversion Types */}
             <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '20px' }}>
               <div style={{ fontFamily: 'Syne, sans-serif', fontSize: '15px', fontWeight: 700, marginBottom: '4px' }}>Conversion Types</div>
               <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '12px' }}>Breakdown</div>
@@ -663,6 +800,7 @@ export default function DashboardClient({
             </div>
           </div>
         )}
+
       </div>
     </div>
   )
