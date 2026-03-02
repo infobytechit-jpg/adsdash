@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 interface Props {
@@ -8,10 +8,11 @@ interface Props {
   adAccounts: any[]
 }
 
-export default function UploadClient({ clients, adAccounts: initialAccounts }: Props) {
+export default function UploadClient({ clients: initialClients, adAccounts: initialAccounts }: Props) {
+  const [clients, setClients] = useState(initialClients)
   const [adAccounts, setAdAccounts] = useState(initialAccounts)
   const [mode, setMode] = useState<'manual' | 'csv'>('manual')
-  const [clientId, setClientId] = useState(clients[0]?.id || '')
+  const [clientId, setClientId] = useState(initialClients[0]?.id || '')
   const [platform, setPlatform] = useState<'google' | 'meta'>('google')
   const [selectedAccountId, setSelectedAccountId] = useState<string>('')
   const [newAccountName, setNewAccountName] = useState('')
@@ -34,6 +35,38 @@ export default function UploadClient({ clients, adAccounts: initialAccounts }: P
   const [csvStep, setCsvStep] = useState<'setup' | 'map' | 'done'>('setup')
   const fileRef = useRef<HTMLInputElement>(null)
   const supabase = createClient()
+
+  // Client-side fallback: if server didn't load clients/accounts (SSR auth issue), fetch them here
+  useEffect(() => {
+    if (initialClients.length > 0) return // server loaded successfully, skip
+
+    async function fetchData() {
+      try {
+        const [{ data: clientData }, { data: adAccountRows }, { data: metricAccounts }] = await Promise.all([
+          supabase.from('clients').select('id,name').order('name'),
+          supabase.from('ad_accounts').select('*').order('account_name'),
+          supabase.from('metrics_cache').select('client_id,platform,account_name').not('account_name', 'is', null),
+        ])
+
+        const loadedClients = clientData || []
+        setClients(loadedClients)
+        if (loadedClients.length > 0) setClientId(loadedClients[0].id)
+
+        const existing = new Set((adAccountRows || []).map((a: any) => `${a.client_id}|${a.platform}|${a.account_name}`))
+        const seen = new Set<string>()
+        const extra = (metricAccounts || [])
+          .filter((m: any) => m.account_name && !existing.has(`${m.client_id}|${m.platform}|${m.account_name}`))
+          .map((m: any, i: number) => ({ id: `metrics-${m.client_id}-${m.platform}-${i}`, client_id: m.client_id, platform: m.platform, account_name: m.account_name, from_metrics: true }))
+          .filter((a: any) => { const k = `${a.client_id}|${a.platform}|${a.account_name}`; if (seen.has(k)) return false; seen.add(k); return true })
+
+        setAdAccounts([...(adAccountRows || []), ...extra])
+      } catch (e) {
+        console.error('Failed to load upload data client-side:', e)
+      }
+    }
+
+    fetchData()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const filteredAccounts = adAccounts.filter(a => a.client_id === clientId && a.platform === platform)
 
@@ -211,13 +244,14 @@ export default function UploadClient({ clients, adAccounts: initialAccounts }: P
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px' }}>
             <div>
               <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-mid)', marginBottom: '6px' }}>Client *</label>
-              <select value={clientId} onChange={e => handleClientChange(e.target.value)}>
+              <select value={clientId} onChange={e => handleClientChange(e.target.value)} style={inp}>
+                {clients.length === 0 && <option value="">Loading clients...</option>}
                 {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </div>
             <div>
               <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-mid)', marginBottom: '6px' }}>Platform *</label>
-              <select value={platform} onChange={e => handlePlatformChange(e.target.value)}>
+              <select value={platform} onChange={e => handlePlatformChange(e.target.value)} style={inp}>
                 <option value="google">Google Ads</option>
                 <option value="meta">Meta Ads</option>
               </select>
@@ -227,7 +261,7 @@ export default function UploadClient({ clients, adAccounts: initialAccounts }: P
           {/* Ad Account */}
           <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '14px' }}>
             <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '10px' }}>Ad Account</div>
-            <select value={selectedAccountId} onChange={e => { setSelectedAccountId(e.target.value); if (e.target.value !== 'new') setNewAccountName('') }}>
+            <select value={selectedAccountId} onChange={e => { setSelectedAccountId(e.target.value); if (e.target.value !== 'new') setNewAccountName('') }} style={inp}>
               <option value="">— Select or create account —</option>
               {filteredAccounts.map(a => <option key={a.id} value={a.id}>{a.account_name}</option>)}
               <option value="new">＋ Create new account...</option>
@@ -235,7 +269,7 @@ export default function UploadClient({ clients, adAccounts: initialAccounts }: P
             {selectedAccountId === 'new' && (
               <input type="text" placeholder='Account name e.g. "Search Campaigns"'
                 value={newAccountName} onChange={e => setNewAccountName(e.target.value)}
-                style={{ marginTop: '10px' }} />
+                style={{ ...inp, marginTop: '10px' }} />
             )}
           </div>
 
@@ -260,11 +294,11 @@ export default function UploadClient({ clients, adAccounts: initialAccounts }: P
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px', marginBottom: '12px' }}>
                     <div>
                       <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-mid)', marginBottom: '6px' }}>Start Date *</label>
-                      <input type="date" value={rangeStart} onChange={e => setRangeStart(e.target.value)} />
+                      <input type="date" value={rangeStart} onChange={e => setRangeStart(e.target.value)} style={inp} />
                     </div>
                     <div>
                       <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-mid)', marginBottom: '6px' }}>End Date *</label>
-                      <input type="date" value={rangeEnd} onChange={e => setRangeEnd(e.target.value)} />
+                      <input type="date" value={rangeEnd} onChange={e => setRangeEnd(e.target.value)} style={inp} />
                     </div>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px' }}>
@@ -275,7 +309,7 @@ export default function UploadClient({ clients, adAccounts: initialAccounts }: P
                     ].map(([key, val, setter, label, placeholder]) => (
                       <div key={key as string}>
                         <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-mid)', marginBottom: '6px' }}>{label as string}</label>
-                        <input type="number" placeholder={placeholder as string} step="0.01" value={val as string} onChange={e => (setter as any)(e.target.value)} />
+                        <input type="number" placeholder={placeholder as string} step="0.01" value={val as string} onChange={e => (setter as any)(e.target.value)} style={inp} />
                       </div>
                     ))}
                   </div>
@@ -418,7 +452,7 @@ export default function UploadClient({ clients, adAccounts: initialAccounts }: P
                     <div style={{ fontSize: '13px', fontWeight: 600, color: f.req ? 'var(--text)' : 'var(--text-muted)' }}>
                       {f.label}{f.req && <span style={{ color: 'var(--cyan)', marginLeft: '4px' }}>*</span>}
                     </div>
-                    <select value={mapping[f.key] || ''} onChange={e => setMapping(p => ({ ...p, [f.key]: e.target.value }))}>
+                    <select value={mapping[f.key] || ''} onChange={e => setMapping(p => ({ ...p, [f.key]: e.target.value }))} style={inp}>
                       <option value="">— skip —</option>
                       {headers.map(h => <option key={h} value={h}>{h}</option>)}
                     </select>
